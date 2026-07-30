@@ -4,7 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser, hasPermission, logActivity } from '@/lib/permissions';
 import { randomBytes } from 'crypto';
-import type { Role } from '@prisma/client';
+type Role = string;
 
 // Get team members
 export async function GET() {

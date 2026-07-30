@@ -1,46 +1,38 @@
 // Prisma schema for the AI Outreach Platform.
-// Source of truth for the data model. The actual tables live in the Supabase
-// Postgres database; this file is used by Prisma's client generator and
-// `prisma db push` to keep the database in sync.
+// MongoDB is the database. This file is used by Prisma's client generator
+// and `prisma db push` to keep the database collections in sync.
 
 generator client {
   provider = "prisma-client-js"
-  // Avoid emitting barrel/index re-exports that can confuse Next.js bundling.
   output   = "../node_modules/.prisma/client"
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl  = env("DIRECT_URL")
+  provider = "mongodb"
+  url      = env("MONGODB_URI")
 }
 
 // ---------------------------------------------------------------------------
 // User
 // ---------------------------------------------------------------------------
-// The `businessName`, `businessDescription`, and `services` fields are the
-// business profile that every user must complete before using the app. These
-// three fields will later be injected into every AI prompt so generated
-// outreach always reflects the user's real business context.
-// ---------------------------------------------------------------------------
 model User {
-  id                  String    @id @default(cuid())
+  id                  String    @id @default(cuid()) @map("_id")
   name                String
   email               String    @unique
   password            String? // nullable for OAuth-only users
-  businessName        String?   @map("business_name")
-  businessDescription String?   @map("business_description")
-  services            String[]  // list of services offered
-  role                Role      @default(ADMIN)
-  plan                Plan      @default(FREE)
-  status              UserStatus @default(ACTIVE)
-  calendarConnected   Boolean   @default(false) @map("calendar_connected")
-  calendarProvider    String?   @map("calendar_provider") // "google" | "outlook" | null
-  calendarCredentials String?   @map("calendar_credentials") // encrypted JSON blob
-  aiPaused            Boolean   @default(false) @map("ai_paused") // global pause-all-AI toggle
-  stripeCustomerId    String?   @map("stripe_customer_id")
-  stripeSubscriptionId String? @map("stripe_subscription_id")
-  createdAt           DateTime  @default(now()) @map("created_at")
+  businessName        String?
+  businessDescription String?
+  services            String[] // list of services offered
+  role                String    @default("ADMIN")
+  plan                String    @default("FREE")
+  status              String    @default("ACTIVE")
+  calendarConnected   Boolean   @default(false)
+  calendarProvider    String? // "google" | "outlook" | null
+  calendarCredentials String? // encrypted JSON blob
+  aiPaused            Boolean   @default(false) // global pause-all-AI toggle
+  stripeCustomerId    String?
+  stripeSubscriptionId String?
+  createdAt           DateTime  @default(now())
 
   outreachTypes  OutreachType[]
   leads          UserLead[]
@@ -50,49 +42,46 @@ model User {
   jobs           Job[]
   notifications  Notification[]
   inboxes        Inbox[]
-
-  @@map("users")
 }
 
 model OutreachType {
-  id           String   @id @default(cuid())
-  userId       String   @map("user_id")
-  name         String
-  systemPrompt String   @map("system_prompt")
-  exampleEmails String[] @map("example_emails") // expects exactly 4 strings
-  sequenceSteps Json    @map("sequence_steps") // [{ stepNumber, delayDays }]
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now()) @map("created_at")
+  id            String   @id @default(cuid()) @map("_id")
+  userId        String
+  name          String
+  systemPrompt  String
+  exampleEmails String[] // expects exactly 4 strings
+  sequenceSteps Json    // [{ stepNumber, delayDays }]
+  active        Boolean  @default(true)
+  createdAt     DateTime @default(now())
 
   user  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   leads UserLead[]
 
   @@index([userId])
-  @@map("outreach_types")
 }
 
 model UserLead {
-  id                 String      @id @default(cuid())
-  userId             String      @map("user_id")
-  companyName        String      @map("company_name")
-  email              String
-  services           String[]
-  country            String
-  website            String?
-  outreachTypeId     String?     @map("outreach_type_id")
-  outreachDescription String     @map("outreach_description")
-  preferredTime      DateTime    @map("preferred_time")
-  timezone           String
-  currentStep        Int         @default(0) @map("current_step")
-  status             LeadStatus  @default(NOT_STARTED)
-  replyTag           ReplyTag?   @map("reply_tag")
-  aiEnabled          Boolean     @default(true) @map("ai_enabled")
-  source             LeadSource @default(MANUAL)
-  lastMessageDate    DateTime?   @map("last_message_date")
-  nextMessageDate    DateTime?   @map("next_message_date")
-  openedAt           DateTime?   @map("opened_at")
-  clickedAt          DateTime?   @map("clicked_at")
-  createdAt          DateTime    @default(now()) @map("created_at")
+  id                   String   @id @default(cuid()) @map("_id")
+  userId               String
+  companyName          String
+  email                String
+  services             String[]
+  country              String
+  website              String?
+  outreachTypeId       String?
+  outreachDescription  String
+  preferredTime        DateTime
+  timezone             String
+  currentStep          Int      @default(0)
+  status               String   @default("NOT_STARTED")
+  replyTag             String?
+  aiEnabled            Boolean  @default(true)
+  source               String   @default("MANUAL")
+  lastMessageDate      DateTime?
+  nextMessageDate      DateTime?
+  openedAt             DateTime?
+  clickedAt            DateTime?
+  createdAt            DateTime @default(now())
 
   user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   outreachType  OutreachType? @relation(fields: [outreachTypeId], references: [id], onDelete: SetNull)
@@ -104,17 +93,16 @@ model UserLead {
   @@index([userId])
   @@index([status])
   @@index([outreachTypeId])
-  @@map("user_leads")
 }
 
 model Conversation {
-  id           String              @id @default(cuid())
-  leadId       String              @unique @map("lead_id")
-  userId       String              @map("user_id")
-  aiEnabled    Boolean             @default(true) @map("ai_enabled")
-  status       ConversationStatus  @default(ACTIVE)
-  lastActivity DateTime?           @map("last_activity")
-  createdAt    DateTime           @default(now()) @map("created_at")
+  id           String    @id @default(cuid()) @map("_id")
+  leadId       String    @unique
+  userId       String
+  aiEnabled    Boolean   @default(true)
+  status       String    @default("ACTIVE")
+  lastActivity DateTime?
+  createdAt    DateTime  @default(now())
 
   lead     UserLead  @relation(fields: [leadId], references: [id], onDelete: Cascade)
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -123,26 +111,25 @@ model Conversation {
 
   @@index([userId])
   @@index([status])
-  @@map("conversations")
 }
 
 model Message {
-  id                String         @id @default(cuid())
-  conversationId    String         @map("conversation_id")
-  leadId            String         @map("lead_id")
-  userId            String         @map("user_id")
-  role              MessageRole
+  id                String   @id @default(cuid()) @map("_id")
+  conversationId    String
+  leadId            String
+  userId            String
+  role              String
   content           String
   subject           String?
   step              Int?
-  aiGenerated       Boolean        @default(false) @map("ai_generated")
-  senderEmail       String?        @map("sender_email") // actual replier address (may differ from lead email)
-  providerMessageId String?        @map("provider_message_id")
-  threadId          String?        @map("thread_id")
-  status            MessageStatus  @default(SENT)
-  openedAt          DateTime?      @map("opened_at")
-  clickedAt         DateTime?      @map("clicked_at")
-  createdAt         DateTime       @default(now()) @map("created_at")
+  aiGenerated       Boolean  @default(false)
+  senderEmail       String?
+  providerMessageId String?
+  threadId          String?
+  status            String   @default("SENT")
+  openedAt          DateTime?
+  clickedAt         DateTime?
+  createdAt         DateTime @default(now())
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   lead         UserLead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
@@ -152,23 +139,22 @@ model Message {
   @@index([leadId])
   @@index([userId])
   @@index([status])
-  @@map("messages")
 }
 
 model Meeting {
-  id              String          @id @default(cuid())
-  conversationId  String          @map("conversation_id")
-  leadId          String          @map("lead_id")
-  userId          String          @map("user_id")
-  customerName    String          @map("customer_name")
-  customerEmail   String          @map("customer_email")
-  scheduledTime   DateTime        @map("scheduled_time")
+  id              String   @id @default(cuid()) @map("_id")
+  conversationId  String
+  leadId          String
+  userId          String
+  customerName    String
+  customerEmail   String
+  scheduledTime   DateTime
   timezone        String
-  meetingProvider String          @map("meeting_provider")
-  meetingLink     String?         @map("meeting_link")
-  proposedSlots   Json?           @map("proposed_slots") // ISO strings of 2-3 offered slots
-  status          MeetingStatus    @default(PROPOSED)
-  createdAt       DateTime        @default(now()) @map("created_at")
+  meetingProvider String
+  meetingLink     String?
+  proposedSlots   Json?
+  status          String   @default("PROPOSED")
+  createdAt       DateTime @default(now())
 
   conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
   lead         UserLead      @relation(fields: [leadId], references: [id], onDelete: Cascade)
@@ -178,19 +164,18 @@ model Meeting {
   @@index([leadId])
   @@index([userId])
   @@index([status])
-  @@map("meetings")
 }
 
 model Job {
-  id              String     @id @default(cuid())
-  leadId          String     @map("lead_id")
-  userId          String     @map("user_id")
+  id              String   @id @default(cuid()) @map("_id")
+  leadId          String
+  userId          String
   type            String
-  runAt           DateTime   @map("run_at")
-  status          JobStatus  @default(SCHEDULED)
-  attempts        Int        @default(0)
-  schedulerJobId  String?    @map("scheduler_job_id")
-  createdAt       DateTime   @default(now()) @map("created_at")
+  runAt           DateTime
+  status          String   @default("SCHEDULED")
+  attempts        Int      @default(0)
+  schedulerJobId  String?
+  createdAt       DateTime @default(now())
 
   lead UserLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
   user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -199,178 +184,67 @@ model Job {
   @@index([userId])
   @@index([status])
   @@index([runAt])
-  @@map("jobs")
 }
 
 model Inbox {
-  id              String   @id @default(cuid())
-  userId          String   @map("user_id")
-  provider        InboxProvider
-  emailAddress    String   @map("email_address")
-  // Encrypted at rest — never store plain text credentials/tokens.
-  credentials     String   // AES-256-GCM encrypted JSON blob
-  status          InboxStatus @default(CONNECTED)
-  dailySendingCap Int      @default(50) @map("daily_sending_cap")
-  warmupThrottle  Boolean  @default(false) @map("warmup_throttle")
-  sentToday       Int      @default(0) @map("sent_today")
-  sentDate        DateTime? @map("sent_date")
-  createdAt       DateTime @default(now()) @map("created_at")
-  updatedAt       DateTime @default(now()) @map("updated_at")
+  id              String   @id @default(cuid()) @map("_id")
+  userId          String
+  provider        String   @default("GMAIL")
+  emailAddress    String
+  credentials     String // AES-256-GCM encrypted JSON blob
+  status          String   @default("CONNECTED")
+  dailySendingCap Int      @default(50)
+  warmupThrottle  Boolean  @default(false)
+  sentToday       Int      @default(0)
+  sentDate        DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([status])
-  @@map("inboxes")
 }
 
 model Notification {
-  id        String   @id @default(cuid())
-  userId    String   @map("user_id")
+  id        String   @id @default(cuid()) @map("_id")
+  userId    String
   type      String
   message   String
-  leadId    String?  @map("lead_id")
+  leadId    String?
   seen      Boolean  @default(false)
-  createdAt DateTime @default(now()) @map("created_at")
+  createdAt DateTime @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([seen])
-  @@map("notifications")
 }
 
 model TeamInvitation {
-  id           String      @id @default(cuid())
-  email        String
-  role          Role        @default(MEMBER)
-  inviterId    String      @map("inviter_id")
-  organizationId String   @map("organization_id")
-  token        String      @unique
-  status       InvitationStatus @default(PENDING)
-  createdAt    DateTime    @default(now()) @map("created_at")
+  id              String   @id @default(cuid()) @map("_id")
+  email           String
+  role            String   @default("MEMBER")
+  inviterId       String
+  organizationId String
+  token           String   @unique
+  status          String   @default("PENDING")
+  createdAt       DateTime @default(now())
 
   @@index([email])
   @@index([organizationId])
-  @@map("team_invitations")
 }
 
 model ActivityLog {
-  id           String   @id @default(cuid())
-  userId       String   @map("user_id")
-  action       String
-  entityType   String   @map("entity_type")
-  entityId     String?  @map("entity_id")
-  details      String?
-  createdAt    DateTime @default(now()) @map("created_at")
+  id         String   @id @default(cuid()) @map("_id")
+  userId     String
+  action     String
+  entityType String
+  entityId   String?
+  details    String?
+  createdAt  DateTime @default(now())
 
   @@index([userId])
   @@index([entityType])
   @@index([createdAt])
-  @@map("activity_logs")
-}
-
-// ---------------------------------------------------------------------------
-// Enums
-// ---------------------------------------------------------------------------
-
-enum Role {
-  ADMIN
-  MANAGER
-  MEMBER
-  VIEWER
-}
-
-enum Plan {
-  FREE
-  STARTER
-  PROFESSIONAL
-  BUSINESS
-}
-
-enum UserStatus {
-  ACTIVE
-  SUSPENDED
-  PENDING
-}
-
-enum LeadStatus {
-  NOT_STARTED
-  IN_PROGRESS
-  REPLIED
-  MEETING_BOOKED
-  COMPLETED
-  BOUNCED
-  UNSUBSCRIBED
-  NOT_INTERESTED
-}
-
-enum LeadSource {
-  MANUAL
-  CSV
-  API
-  ZOOMINFO
-  APOLLO
-}
-
-enum ConversationStatus {
-  ACTIVE
-  PAUSED
-  ENDED
-  CLOSED
-}
-
-enum MessageRole {
-  ASSISTANT
-  CUSTOMER
-  OWNER
-}
-
-enum MessageStatus {
-  SENT
-  DELIVERED
-  FAILED
-  PENDING
-}
-
-enum MeetingStatus {
-  PROPOSED
-  CONFIRMED
-  CANCELED
-  COMPLETED
-}
-
-enum JobStatus {
-  SCHEDULED
-  RUNNING
-  COMPLETED
-  FAILED
-  CANCELLED
-}
-
-enum InboxProvider {
-  GMAIL
-  OUTLOOK
-  SMTP
-}
-
-enum InboxStatus {
-  CONNECTED
-  EXPIRED
-  ERROR
-  DISCONNECTED
-}
-
-enum ReplyTag {
-  INTERESTED
-  WANTS_MEETING
-  NOT_INTERESTED
-  OUT_OF_OFFICE
-}
-
-enum InvitationStatus {
-  PENDING
-  ACCEPTED
-  EXPIRED
-  CANCELLED
 }

@@ -2,7 +2,7 @@
 
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-import { Role } from '@prisma/client';
+type Role = string;
 import { ChevronDown, Search, Command } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { CommandPalette } from '@/components/command-palette';

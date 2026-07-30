@@ -13,7 +13,7 @@ import {
 import { Loader2, UserPlus, Trash2, Shield, Activity, Users, Copy, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
-import type { Role } from '@prisma/client';
+type Role = string;
 
 interface TeamMember {
   id: string;

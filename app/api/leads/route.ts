@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
-import { LeadSource, LeadStatus } from '@prisma/client';
+const VALID_STATUSES = ['NOT_STARTED', 'IN_PROGRESS', 'REPLIED', 'MEETING_BOOKED', 'COMPLETED', 'BOUNCED', 'UNSUBSCRIBED', 'NOT_INTERESTED'];
+const VALID_SOURCES = ['MANUAL', 'CSV', 'API', 'ZOOMINFO', 'APOLLO'];
 import { scheduleJob, convertToUTC } from '@/lib/scheduler';
 import { canAddLead } from '@/lib/plan-limits';
 
@@ -27,7 +28,7 @@ export async function GET(req: NextRequest) {
     const sourceFilter = searchParams.get('source') || '';
 
     const where: Record<string, unknown> = { userId: session.user.id };
-    if (statusFilter && VALID_STATUSES.includes(statusFilter as LeadStatus)) {
+    if (statusFilter && VALID_STATUSES.includes(statusFilter)) {
       where.status = statusFilter;
     }
     if (outreachTypeFilter) {
@@ -36,7 +37,7 @@ export async function GET(req: NextRequest) {
     if (countryFilter) {
       where.country = { contains: countryFilter, mode: 'insensitive' };
     }
-    if (sourceFilter && VALID_SOURCES.includes(sourceFilter as LeadSource)) {
+    if (sourceFilter && VALID_SOURCES.includes(sourceFilter)) {
       where.source = sourceFilter;
     }
 

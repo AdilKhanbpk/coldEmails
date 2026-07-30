@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser, hasPermission } from '@/lib/permissions';
-import type { Role } from '@prisma/client';
+type Role = string;
 
 // Admin panel — get system logs (job failures, send failures)
 export async function GET() {

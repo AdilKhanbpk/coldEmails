@@ -6,7 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Loader2, Check, CreditCard, ExternalLink, TrendingUp } from 'lucide-react';
 import { toast } from 'sonner';
-import type { Plan } from '@prisma/client';
+type Plan = string;
 
 interface BillingStatus {
   plan: Plan;

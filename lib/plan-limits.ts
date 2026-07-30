@@ -3,7 +3,7 @@
 // These limits are checked on every lead creation and email send.
 // ---------------------------------------------------------------------------
 
-import type { Plan } from '@prisma/client';
+type Plan = string;
 
 export interface PlanLimits {
   maxLeads: number;

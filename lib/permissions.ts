@@ -10,7 +10,7 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from './auth';
 import { prisma } from './prisma';
-import type { Role } from '@prisma/client';
+type Role = string;
 
 export type Permission = 'view' | 'edit' | 'send' | 'delete' | 'manage_team' | 'manage_billing';
 

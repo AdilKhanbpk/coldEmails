@@ -1,7 +1,7 @@
 import Stripe from 'stripe';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import type { Plan } from '@prisma/client';
+type Plan = string;
 
 // Stripe webhook handler — keeps the User's plan and status in sync with Stripe.
 // Handles: subscription created, updated, cancelled, payment failed.
