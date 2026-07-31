@@ -1,14 +1,5 @@
-// ---------------------------------------------------------------------------
-// Calendar integration — Google Calendar and Outlook Calendar.
-//
-// Provides:
-//   - getCalendarAvailability: checks free/busy via the appropriate Calendar API
-//   - createCalendarEvent: creates an event and returns a meeting link
-//     (Google Meet link via Google Calendar, Teams link via Outlook)
-//
-// Credentials are stored encrypted in the User.calendarCredentials field.
-// ---------------------------------------------------------------------------
-
+import { connectDB } from './mongodb';
+import User from '../models/User';
 import { google } from 'googleapis';
 import { Client } from '@microsoft/microsoft-graph-client';
 import { decryptJSON } from './crypto';
@@ -32,15 +23,9 @@ export interface BusySlot {
   end: Date;
 }
 
-// ---------------------------------------------------------------------------
-// Get free/busy for the next 14 days
-// ---------------------------------------------------------------------------
-
 export async function getCalendarAvailability(userId: string): Promise<BusySlot[]> {
-  const user = await import('./prisma').then((m) => m.prisma.user.findUnique({
-    where: { id: userId },
-    select: { calendarProvider: true, calendarCredentials: true },
-  }));
+  await connectDB();
+  const user = await User.findById(userId).select('calendarProvider calendarCredentials').lean();
 
   if (!user?.calendarCredentials) return [];
 
@@ -125,10 +110,6 @@ async function getOutlookBusySlots(
   }
 }
 
-// ---------------------------------------------------------------------------
-// Create a calendar event with a meeting link (Google Meet or Teams)
-// ---------------------------------------------------------------------------
-
 export interface CreateEventParams {
   title: string;
   start: Date;
@@ -140,10 +121,8 @@ export async function createCalendarEvent(
   userId: string,
   params: CreateEventParams,
 ): Promise<string | null> {
-  const user = await import('./prisma').then((m) => m.prisma.user.findUnique({
-    where: { id: userId },
-    select: { calendarProvider: true, calendarCredentials: true },
-  }));
+  await connectDB();
+  const user = await User.findById(userId).select('calendarProvider calendarCredentials').lean();
 
   if (!user?.calendarCredentials) return null;
 
@@ -184,7 +163,6 @@ async function createGoogleEvent(
       },
     });
 
-    // Extract Google Meet link
     const entryPoints = res.data.conferenceData?.entryPoints;
     if (entryPoints && entryPoints.length > 0) {
       const meetEntry = entryPoints.find((e) => e.entryPointType === 'video');

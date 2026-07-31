@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
+import { connectDB } from '@/lib/mongodb';
+import User from '@/models/User';
 
 export async function POST(req: Request) {
   try {
@@ -38,15 +39,11 @@ export async function POST(req: Request) {
       );
     }
 
-    // These three fields will later be injected into every AI prompt so
-    // generated outreach always reflects the user's real business context.
-    await prisma.user.update({
-      where: { id: session.user.id },
-      data: {
-        businessName: businessName.trim(),
-        businessDescription: businessDescription.trim(),
-        services: services.map((s) => s.trim()).filter(Boolean),
-      },
+    await connectDB();
+    await User.findByIdAndUpdate(session.user.id, {
+      businessName: businessName.trim(),
+      businessDescription: businessDescription.trim(),
+      services: services.map((s) => s.trim()).filter(Boolean),
     });
 
     return NextResponse.json({ success: true });

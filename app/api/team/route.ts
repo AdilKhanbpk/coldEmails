@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
+import { connectDB } from '@/lib/mongodb';
+import User from '@/models/User';
+import TeamInvitation from '@/models/TeamInvitation';
 import { getCurrentUser, hasPermission, logActivity } from '@/lib/permissions';
 import { randomBytes } from 'crypto';
 type Role = string;
 
-// Get team members
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
@@ -19,32 +20,26 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // All users in the system are part of the same workspace (single-org model)
-    const members = await prisma.user.findMany({
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        role: true,
-        plan: true,
-        status: true,
-        createdAt: true,
-      },
-      orderBy: { createdAt: 'asc' },
-    });
+    await connectDB();
+    const members = await User.find()
+      .select('name email role plan status createdAt')
+      .sort({ createdAt: 1 })
+      .lean();
 
-    const invitations = await prisma.teamInvitation.findMany({
-      where: { status: 'PENDING' },
-      orderBy: { createdAt: 'desc' },
-    });
+    const formattedMembers = members.map((m: any) => ({ ...m, id: m._id.toString() }));
 
-    return NextResponse.json({ members, invitations, currentRole: currentUser.role });
+    const invitations = await TeamInvitation.find({ status: 'PENDING' })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const formattedInv = invitations.map((i: any) => ({ ...i, id: i._id.toString() }));
+
+    return NextResponse.json({ members: formattedMembers, invitations: formattedInv, currentRole: currentUser.role });
   } catch {
     return NextResponse.json({ error: 'Failed to fetch team.' }, { status: 500 });
   }
 }
 
-// Invite a team member
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions);
@@ -69,33 +64,27 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'A valid role is required.' }, { status: 400 });
     }
 
-    // Check if user already exists
-    const existing = await prisma.user.findUnique({
-      where: { email: email.trim().toLowerCase() },
-    });
+    await connectDB();
+
+    const existing = await User.findOne({ email: email.trim().toLowerCase() });
     if (existing) {
       return NextResponse.json({ error: 'A user with this email already exists.' }, { status: 400 });
     }
 
-    // Check for existing pending invitation
-    const existingInv = await prisma.teamInvitation.findFirst({
-      where: { email: email.trim().toLowerCase(), status: 'PENDING' },
-    });
+    const existingInv = await TeamInvitation.findOne({ email: email.trim().toLowerCase(), status: 'PENDING' });
     if (existingInv) {
       return NextResponse.json({ error: 'An invitation has already been sent to this email.' }, { status: 400 });
     }
 
     const token = randomBytes(32).toString('hex');
 
-    await prisma.teamInvitation.create({
-      data: {
-        email: email.trim().toLowerCase(),
-        role,
-        inviterId: session.user.id,
-        organizationId: session.user.id, // single-org model
-        token,
-        status: 'PENDING',
-      },
+    await TeamInvitation.create({
+      email: email.trim().toLowerCase(),
+      role,
+      inviterId: session.user.id,
+      organizationId: session.user.id,
+      token,
+      status: 'PENDING',
     });
 
     await logActivity(
@@ -106,8 +95,6 @@ export async function POST(req: Request) {
       `Invited ${email} as ${role}`,
     );
 
-    // In production, send an email with the invite link.
-    // For now, return the token so the UI can display the signup link.
     return NextResponse.json({
       success: true,
       inviteUrl: `/signup?invite=${token}`,
@@ -118,7 +105,6 @@ export async function POST(req: Request) {
   }
 }
 
-// Update a team member's role
 export async function PATCH(req: Request) {
   try {
     const session = await getServerSession(authOptions);
@@ -143,10 +129,8 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: 'Invalid role.' }, { status: 400 });
     }
 
-    await prisma.user.update({
-      where: { id: userId },
-      data: { role },
-    });
+    await connectDB();
+    await User.findByIdAndUpdate(userId, { role });
 
     await logActivity(
       session.user.id,
@@ -162,7 +146,6 @@ export async function PATCH(req: Request) {
   }
 }
 
-// Remove a team member
 export async function DELETE(req: Request) {
   try {
     const session = await getServerSession(authOptions);
@@ -186,7 +169,8 @@ export async function DELETE(req: Request) {
       return NextResponse.json({ error: 'You cannot remove yourself.' }, { status: 400 });
     }
 
-    await prisma.user.delete({ where: { id: userId } });
+    await connectDB();
+    await User.findByIdAndDelete(userId);
 
     await logActivity(
       session.user.id,

@@ -1,6 +1,7 @@
 import Stripe from 'stripe';
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { connectDB } from '@/lib/mongodb';
+import User from '@/models/User';
 type Plan = string;
 
 // Stripe webhook handler — keeps the User's plan and status in sync with Stripe.
@@ -43,13 +44,11 @@ export async function POST(req: NextRequest) {
 
         const plan = mapPriceToPlan(priceId, stripe);
 
-        await prisma.user.updateMany({
-          where: { stripeCustomerId: customerId },
-          data: {
-            stripeSubscriptionId: subscriptionId,
-            plan,
-          },
-        });
+        await connectDB();
+        await User.updateMany(
+          { stripeCustomerId: customerId },
+          { stripeSubscriptionId: subscriptionId, plan },
+        );
         break;
       }
 
@@ -60,10 +59,11 @@ export async function POST(req: NextRequest) {
 
         const plan = mapPriceToPlan(priceId, stripe);
 
-        await prisma.user.updateMany({
-          where: { stripeCustomerId: customerId },
-          data: { plan, status: 'ACTIVE' },
-        });
+        await connectDB();
+        await User.updateMany(
+          { stripeCustomerId: customerId },
+          { plan, status: 'ACTIVE' },
+        );
         break;
       }
 
@@ -71,10 +71,11 @@ export async function POST(req: NextRequest) {
         const subscription = event.data.object as Stripe.Subscription;
         const customerId = subscription.customer as string;
 
-        await prisma.user.updateMany({
-          where: { stripeCustomerId: customerId },
-          data: { plan: 'FREE', stripeSubscriptionId: null },
-        });
+        await connectDB();
+        await User.updateMany(
+          { stripeCustomerId: customerId },
+          { plan: 'FREE', stripeSubscriptionId: null },
+        );
         break;
       }
 
@@ -82,10 +83,11 @@ export async function POST(req: NextRequest) {
         const invoice = event.data.object as Stripe.Invoice;
         const customerId = invoice.customer as string;
 
-        await prisma.user.updateMany({
-          where: { stripeCustomerId: customerId },
-          data: { status: 'SUSPENDED' },
-        });
+        await connectDB();
+        await User.updateMany(
+          { stripeCustomerId: customerId },
+          { status: 'SUSPENDED' },
+        );
         break;
       }
 

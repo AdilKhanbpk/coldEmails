@@ -1,9 +1,6 @@
-// ---------------------------------------------------------------------------
-// Inbox polling — backup poller that checks each connected inbox for new messages.
-// This catches replies that webhooks miss or deliver late.
-// ---------------------------------------------------------------------------
-
-import { prisma } from './prisma';
+import { connectDB } from './mongodb';
+import Inbox from '../models/Inbox';
+import Message from '../models/Message';
 import { google } from 'googleapis';
 import { Client } from '@microsoft/microsoft-graph-client';
 import { decryptJSON } from './crypto';
@@ -24,9 +21,8 @@ interface OutlookCreds {
 }
 
 export async function pollInboxes(): Promise<{ checked: number; newReplies: number }> {
-  const inboxes = await prisma.inbox.findMany({
-    where: { status: 'CONNECTED' },
-  });
+  await connectDB();
+  const inboxes = await Inbox.find({ status: 'CONNECTED' }).lean();
 
   let checked = 0;
   let newReplies = 0;
@@ -49,7 +45,7 @@ export async function pollInboxes(): Promise<{ checked: number; newReplies: numb
   return { checked, newReplies };
 }
 
-async function pollGmailInbox(inbox: typeof prisma.inbox): Promise<number> {
+async function pollGmailInbox(inbox: any): Promise<number> {
   const creds = decryptJSON<GmailCreds>(inbox.credentials);
   const oauth2Client = new google.auth.OAuth2(creds.clientId, creds.clientSecret);
   oauth2Client.setCredentials({
@@ -61,7 +57,6 @@ async function pollGmailInbox(inbox: typeof prisma.inbox): Promise<number> {
   let count = 0;
 
   try {
-    // Search for recent unread messages in the last 24h
     const afterDate = new Date();
     afterDate.setHours(afterDate.getHours() - 24);
     const afterSec = Math.floor(afterDate.getTime() / 1000);
@@ -76,10 +71,7 @@ async function pollGmailInbox(inbox: typeof prisma.inbox): Promise<number> {
     for (const msg of messages) {
       if (!msg.id) continue;
 
-      // Check if we already processed this message
-      const existing = await prisma.message.findFirst({
-        where: { providerMessageId: msg.id },
-      });
+      const existing = await Message.findOne({ providerMessageId: msg.id });
       if (existing) continue;
 
       const fullMsg = await gmail.users.messages.get({
@@ -96,7 +88,7 @@ async function pollGmailInbox(inbox: typeof prisma.inbox): Promise<number> {
       const body = extractBody(fullMsg.data.payload);
 
       await processIncomingReply(
-        inbox.id,
+        inbox._id.toString(),
         fullMsg.data.threadId || null,
         senderEmail,
         subject,
@@ -112,7 +104,7 @@ async function pollGmailInbox(inbox: typeof prisma.inbox): Promise<number> {
   return count;
 }
 
-async function pollOutlookInbox(inbox: typeof prisma.inbox): Promise<number> {
+async function pollOutlookInbox(inbox: any): Promise<number> {
   const creds = decryptJSON<OutlookCreds>(inbox.credentials);
   const client = Client.init({
     authProvider: async (done) => done(null, creds.accessToken),
@@ -125,9 +117,7 @@ async function pollOutlookInbox(inbox: typeof prisma.inbox): Promise<number> {
       .get();
 
     for (const msg of res.value || []) {
-      const existing = await prisma.message.findFirst({
-        where: { providerMessageId: msg.id },
-      });
+      const existing = await Message.findOne({ providerMessageId: msg.id });
       if (existing) continue;
 
       const senderEmail = msg.from?.emailAddress?.address || '';
@@ -136,7 +126,7 @@ async function pollOutlookInbox(inbox: typeof prisma.inbox): Promise<number> {
       const conversationId = msg.conversationId || null;
 
       await processIncomingReply(
-        inbox.id,
+        inbox._id.toString(),
         conversationId,
         senderEmail,
         subject,

@@ -1,34 +1,24 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
+import { connectDB } from '@/lib/mongodb';
+import OutreachType from '@/models/OutreachType';
 import { redirect } from 'next/navigation';
 import { OutreachTypeForm } from '../../outreach-type-form';
 
-export default async function EditOutreachTypePage({
-  params,
-}: {
+interface PageProps {
   params: { id: string };
-}) {
+}
+
+export default async function EditOutreachTypePage({ params }: PageProps) {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) redirect('/login');
 
-  const outreachType = await prisma.outreachType.findFirst({
-    where: { id: params.id, userId: session.user.id },
-  });
+  await connectDB();
+  const outreachType = await OutreachType.findOne({ _id: params.id, userId: session.user.id }).lean();
 
   if (!outreachType) redirect('/outreach-types');
 
-  return (
-    <OutreachTypeForm
-      mode="edit"
-      typeId={outreachType.id}
-      initialData={{
-        name: outreachType.name,
-        systemPrompt: outreachType.systemPrompt,
-        exampleEmails: outreachType.exampleEmails as string[],
-        sequenceSteps: outreachType.sequenceSteps as { stepNumber: number; delayDays: number }[],
-        active: outreachType.active,
-      }}
-    />
-  );
+  const formatted = { ...outreachType, id: outreachType._id.toString() };
+
+  return <OutreachTypeForm outreachType={formatted} />;
 }

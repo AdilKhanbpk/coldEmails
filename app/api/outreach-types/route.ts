@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
+import { connectDB } from '@/lib/mongodb';
+import OutreachType from '@/models/OutreachType';
+import UserLead from '@/models/UserLead';
 
 export async function GET() {
   try {
@@ -10,17 +12,19 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const outreachTypes = await prisma.outreachType.findMany({
-      where: { userId: session.user.id },
-      include: {
-        _count: {
-          select: { leads: true },
-        },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+    await connectDB();
+    const outreachTypes = await OutreachType.find({ userId: session.user.id })
+      .sort({ createdAt: -1 })
+      .lean();
 
-    return NextResponse.json(outreachTypes);
+    const withCounts = await Promise.all(
+      outreachTypes.map(async (ot: any) => {
+        const leadCount = await UserLead.countDocuments({ outreachTypeId: ot._id });
+        return { ...ot, id: ot._id.toString(), _count: { leads: leadCount } };
+      }),
+    );
+
+    return NextResponse.json(withCounts);
   } catch {
     return NextResponse.json(
       { error: 'Failed to fetch outreach types.' },
@@ -45,7 +49,6 @@ export async function POST(req: Request) {
       active?: boolean;
     };
 
-    // Validation
     if (!name?.trim()) {
       return NextResponse.json({ field: 'name', error: 'Name is required.' }, { status: 400 });
     }
@@ -65,21 +68,19 @@ export async function POST(req: Request) {
       );
     }
 
-    // If saving as active, all four example emails must be present (already validated above).
     const wantActive = active !== false;
 
-    const outreachType = await prisma.outreachType.create({
-      data: {
-        userId: session.user.id,
-        name: name.trim(),
-        systemPrompt: systemPrompt.trim(),
-        exampleEmails: exampleEmails.map((e) => e.trim()),
-        sequenceSteps,
-        active: wantActive,
-      },
+    await connectDB();
+    const outreachType = await OutreachType.create({
+      userId: session.user.id,
+      name: name.trim(),
+      systemPrompt: systemPrompt.trim(),
+      exampleEmails: exampleEmails.map((e) => e.trim()),
+      sequenceSteps,
+      active: wantActive,
     });
 
-    return NextResponse.json(outreachType, { status: 201 });
+    return NextResponse.json({ ...outreachType.toObject(), id: outreachType._id.toString() }, { status: 201 });
   } catch {
     return NextResponse.json(
       { error: 'Failed to create outreach type.' },

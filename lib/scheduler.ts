@@ -1,5 +1,7 @@
-import { prisma } from './prisma';
-import { Inbox } from '@prisma/client';
+import { connectDB } from './mongodb';
+import Job from '../models/Job';
+import Inbox from '../models/Inbox';
+import type { IInbox } from '../models/Inbox';
 
 // ---------------------------------------------------------------------------
 // Job scheduler abstraction.
@@ -61,64 +63,65 @@ export async function scheduleJob(
   type: string,
   runAt: Date,
 ): Promise<string> {
-  const job = await prisma.job.create({
-    data: { leadId, userId, type, runAt, status: 'SCHEDULED' },
-  });
-  return job.id;
+  await connectDB();
+  const job = await Job.create({ leadId, userId, type, runAt, status: 'SCHEDULED' });
+  return (job._id as string).toString();
 }
 
 export async function cancelJobsForLead(leadId: string): Promise<void> {
-  await prisma.job.updateMany({
-    where: { leadId, status: { in: ['SCHEDULED', 'RUNNING'] } },
-    data: { status: 'CANCELLED' },
-  });
+  await connectDB();
+  await Job.updateMany(
+    { leadId, status: { $in: ['SCHEDULED', 'RUNNING'] } },
+    { status: 'CANCELLED' },
+  );
 }
 
 export async function pollDueJobs(limit = 50): Promise<ScheduledJob[]> {
+  await connectDB();
   const now = new Date();
-  const jobs = await prisma.job.findMany({
-    where: { status: 'SCHEDULED', runAt: { lte: now } },
-    orderBy: { runAt: 'asc' },
-    take: limit,
-  });
+  const jobs = await Job.find({ status: 'SCHEDULED', runAt: { $lte: now } })
+    .sort({ runAt: 1 })
+    .limit(limit);
 
   return jobs.map((j) => ({
-    jobId: j.id,
-    leadId: j.leadId,
+    jobId: (j._id as string).toString(),
+    leadId: j.leadId.toString(),
     type: j.type,
     runAt: j.runAt,
   }));
 }
 
 export async function markJobRunning(jobId: string): Promise<boolean> {
-  const result = await prisma.job.updateMany({
-    where: { id: jobId, status: 'SCHEDULED' },
-    data: { status: 'RUNNING' },
-  });
-  return result.count > 0;
+  await connectDB();
+  const result = await Job.updateOne(
+    { _id: jobId, status: 'SCHEDULED' },
+    { status: 'RUNNING' },
+  );
+  return result.modifiedCount > 0;
 }
 
 export async function markJobCompleted(jobId: string): Promise<void> {
-  await prisma.job.update({ where: { id: jobId }, data: { status: 'COMPLETED' } });
+  await connectDB();
+  await Job.findByIdAndUpdate(jobId, { status: 'COMPLETED' });
 }
 
 export async function markJobFailed(jobId: string): Promise<number> {
-  const job = await prisma.job.findUnique({ where: { id: jobId }, select: { attempts: true } });
+  await connectDB();
+  const job = await Job.findById(jobId);
   const attempts = (job?.attempts || 0) + 1;
-  await prisma.job.update({ where: { id: jobId }, data: { status: 'FAILED', attempts } });
+  await Job.findByIdAndUpdate(jobId, { status: 'FAILED', attempts });
   return attempts;
 }
 
 export async function requeueJob(jobId: string, newRunAt: Date): Promise<void> {
-  await prisma.job.update({ where: { id: jobId }, data: { status: 'SCHEDULED', runAt: newRunAt } });
+  await connectDB();
+  await Job.findByIdAndUpdate(jobId, { status: 'SCHEDULED', runAt: newRunAt });
 }
 
 // Get inbox for a user, with round-robin rotation if multiple inboxes exist.
-export async function getInboxForUser(userId: string): Promise<Inbox | null> {
-  const inboxes = await prisma.inbox.findMany({
-    where: { userId, status: 'CONNECTED' },
-    orderBy: { createdAt: 'asc' },
-  });
+export async function getInboxForUser(userId: string): Promise<IInbox | null> {
+  await connectDB();
+  const inboxes = await Inbox.find({ userId, status: 'CONNECTED' }).sort({ createdAt: 1 }).lean();
 
   if (inboxes.length === 0) return null;
 
@@ -140,23 +143,21 @@ export async function getInboxForUser(userId: string): Promise<Inbox | null> {
     return aSent - bSent;
   });
 
-  return eligible[0];
+  return eligible[0] as IInbox;
 }
 
 export async function incrementInboxSentCount(inboxId: string): Promise<void> {
+  await connectDB();
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const inbox = await prisma.inbox.findUnique({ where: { id: inboxId } });
+  const inbox = await Inbox.findById(inboxId);
   if (!inbox) return;
 
   const sentDate = inbox.sentDate ? new Date(inbox.sentDate) : null;
   const isSameDay = sentDate && sentDate.getTime() === today.getTime();
   const newCount = isSameDay ? inbox.sentToday + 1 : 1;
 
-  await prisma.inbox.update({
-    where: { id: inboxId },
-    data: { sentToday: newCount, sentDate: today },
-  });
+  await Inbox.findByIdAndUpdate(inboxId, { sentToday: newCount, sentDate: today });
 }
 
 // Check if the current time falls within quiet hours for a given timezone.

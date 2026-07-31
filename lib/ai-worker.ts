@@ -1,25 +1,10 @@
-// ---------------------------------------------------------------------------
-// AI Worker — generates personalized outreach emails and decides actions on replies.
-//
-// Provider-agnostic: uses getChatModel() from lib/llm-provider.ts, which reads
-// the LLM_PROVIDER env var. To switch from OpenAI to Anthropic (or vice versa),
-// change ONLY the LLM_PROVIDER env var — no code changes needed here.
-//
-// The prompt is assembled using LangChain prompt templates in this priority order:
-//   1. Business profile (businessName, businessDescription, services)
-//   2. Outreach Type systemPrompt
-//   3. Outreach Type exampleEmails (4 examples — tone/structure guidance)
-//   4. Lead details (companyName, services, country, outreachDescription)
-//      with {{first_name}}, {{company_name}}, {{job_title}} substitution
-//   5. For follow-ups/replies: last 10 messages of the conversation (token-cost control)
-//
-// The model is explicitly instructed: if it lacks information, it must say it
-// will confirm and follow up — it must NEVER invent facts.
-// ---------------------------------------------------------------------------
-
-import { ChatPromptTemplate, MessagesPlaceholder } from '@langchain/core/prompts';
-import { SystemMessage, HumanMessage, AIMessage } from '@langchain/core/messages';
-import { prisma } from './prisma';
+import { connectDB } from './mongodb';
+import User from '../models/User';
+import OutreachType from '../models/OutreachType';
+import UserLead from '../models/UserLead';
+import Message from '../models/Message';
+import { ChatPromptTemplate } from '@langchain/core/prompts';
+import { SystemMessage, HumanMessage } from '@langchain/core/messages';
 import { getChatModel } from './llm-provider';
 
 export interface GeneratedEmail {
@@ -55,39 +40,19 @@ export interface EmailGenerationContext {
   previousMessages: { role: string; content: string }[];
 }
 
-// ---------------------------------------------------------------------------
-// generateOutreachMessage — assembles a first-email or follow-up from the
-// full context (business profile, outreach type, lead, conversation history).
-// ---------------------------------------------------------------------------
-
 export async function generateOutreachMessage(
   leadId: string,
   userId: string,
   outreachTypeId: string,
   stepNumber: number,
 ): Promise<GeneratedEmail> {
+  await connectDB();
+
   const [user, outreachType, lead, previousMessages] = await Promise.all([
-    prisma.user.findUnique({
-      where: { id: userId },
-      select: { businessName: true, businessDescription: true, services: true },
-    }),
-    prisma.outreachType.findUnique({
-      where: { id: outreachTypeId },
-      select: { systemPrompt: true, exampleEmails: true, sequenceSteps: true },
-    }),
-    prisma.userLead.findUnique({
-      where: { id: leadId },
-      select: {
-        companyName: true, email: true, country: true, website: true,
-        services: true, outreachDescription: true,
-      },
-    }),
-    prisma.message.findMany({
-      where: { leadId, status: 'SENT' },
-      orderBy: { createdAt: 'asc' },
-      select: { role: true, content: true, step: true },
-      take: 10,
-    }),
+    User.findById(userId).select('businessName businessDescription services').lean(),
+    OutreachType.findById(outreachTypeId).select('systemPrompt exampleEmails sequenceSteps').lean(),
+    UserLead.findById(leadId).select('companyName email country website services outreachDescription').lean(),
+    Message.find({ leadId, status: 'SENT' }).sort({ createdAt: 1 }).select('role content step').limit(10).lean(),
   ]);
 
   if (!user || !outreachType || !lead) {
@@ -103,7 +68,7 @@ export async function generateOutreachMessage(
     leadCompanyName: lead.companyName,
     leadEmail: lead.email,
     leadCountry: lead.country,
-    leadWebsite: lead.website,
+    leadWebsite: lead.website || null,
     leadServices: lead.services,
     leadOutreachDescription: lead.outreachDescription,
     stepNumber,
@@ -158,7 +123,7 @@ async function callLLM(ctx: EmailGenerationContext): Promise<GeneratedEmail> {
   const historySection =
     ctx.previousMessages.length > 0
       ? `\n\nPrevious messages in this conversation (most recent last):\n${ctx.previousMessages
-          .map((m, i) => `[${m.role.toLowerCase()}] ${m.content}`)
+          .map((m) => `[${m.role.toLowerCase()}] ${m.content}`)
           .join('\n---\n')}`
       : '';
 
@@ -179,43 +144,25 @@ async function callLLM(ctx: EmailGenerationContext): Promise<GeneratedEmail> {
   return parseEmailJSON(content);
 }
 
-// ---------------------------------------------------------------------------
-// decideReplyAction — given a customer reply, the AI chooses exactly one of:
-//   a. "continue"  — generate and send a contextual reply
-//   b. "meeting"   — the lead wants to meet; trigger meeting flow
-//   c. "stop"      — disinterest / rude / removal request; stop outreach permanently
-// ---------------------------------------------------------------------------
-
 export async function decideReplyAction(
   leadId: string,
   userId: string,
   customerReply: string,
 ): Promise<ReplyDecision> {
-  const [user, lead, outreachType, recentMessages] = await Promise.all([
-    prisma.user.findUnique({
-      where: { id: userId },
-      select: { businessName: true, businessDescription: true, services: true },
-    }),
-    prisma.userLead.findUnique({
-      where: { id: leadId },
-      select: {
-        companyName: true, email: true, country: true, services: true,
-        outreachDescription: true, outreachTypeId: true,
-      },
-    }),
-    prisma.outreachType.findFirst({
-      where: { leads: { some: { id: leadId } } },
-      select: { systemPrompt: true, exampleEmails: true },
-    }),
-    prisma.message.findMany({
-      where: { leadId, status: 'SENT' },
-      orderBy: { createdAt: 'desc' },
-      select: { role: true, content: true },
-      take: 10,
-    }),
+  await connectDB();
+
+  const [user, lead, recentMessages] = await Promise.all([
+    User.findById(userId).select('businessName businessDescription services').lean(),
+    UserLead.findById(leadId).select('companyName email country services outreachDescription outreachTypeId').lean(),
+    Message.find({ leadId, status: 'SENT' }).sort({ createdAt: -1 }).select('role content').limit(10).lean(),
   ]);
 
   if (!user || !lead) throw new Error('Missing context for reply decision.');
+
+  let outreachType = null;
+  if (lead.outreachTypeId) {
+    outreachType = await OutreachType.findById(lead.outreachTypeId).select('systemPrompt exampleEmails').lean();
+  }
 
   const model = getChatModel();
 
@@ -278,10 +225,6 @@ export async function decideReplyAction(
   return parseReplyDecision(content);
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 function extractContent(response: unknown): string {
   if (typeof response === 'string') return response;
   const r = response as { content?: unknown };
@@ -316,11 +259,9 @@ function parseReplyDecision(content: string): ReplyDecision {
 }
 
 function extractJSON(text: string): Record<string, unknown> | null {
-  // Try direct parse first
   try {
     return JSON.parse(text);
   } catch {
-    // Try to extract JSON from markdown code fences
     const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (fenceMatch) {
       try {
@@ -329,7 +270,6 @@ function extractJSON(text: string): Record<string, unknown> | null {
         // continue
       }
     }
-    // Try to find first { ... } block
     const braceMatch = text.match(/\{[\s\S]*\}/);
     if (braceMatch) {
       try {

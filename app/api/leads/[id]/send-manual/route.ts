@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
+import { connectDB } from '@/lib/mongodb';
+import UserLead from '@/models/UserLead';
+import Conversation from '@/models/Conversation';
+import Message from '@/models/Message';
 import { sendEmail } from '@/lib/email-sender';
 import { getInboxForUser } from '@/lib/scheduler';
 
@@ -9,8 +12,6 @@ interface Params {
   params: { id: string };
 }
 
-// Send a manual message from the conversation view (when AI is stopped).
-// Saves the message with role="owner".
 export async function POST(req: Request, { params }: Params) {
   try {
     const session = await getServerSession(authOptions);
@@ -18,10 +19,10 @@ export async function POST(req: Request, { params }: Params) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const lead = await prisma.userLead.findFirst({
-      where: { id: params.id, userId: session.user.id },
-      select: { id: true, email: true, conversationId: true },
-    });
+    await connectDB();
+    const lead = await UserLead.findOne({ _id: params.id, userId: session.user.id })
+      .select('_id email companyName conversationId')
+      .lean();
 
     if (!lead) {
       return NextResponse.json({ error: 'Lead not found.' }, { status: 404 });
@@ -48,34 +49,32 @@ export async function POST(req: Request, { params }: Params) {
 
     let conversationId = lead.conversationId;
     if (!conversationId) {
-      const conv = await prisma.conversation.create({
-        data: { leadId: lead.id, userId: session.user.id, status: 'ACTIVE', lastActivity: new Date() },
+      const conv = await Conversation.create({
+        leadId: lead._id,
+        userId: session.user.id,
+        status: 'ACTIVE',
+        lastActivity: new Date(),
       });
-      conversationId = conv.id;
-      await prisma.userLead.update({ where: { id: lead.id }, data: { conversationId } });
+      conversationId = conv._id;
+      await UserLead.findByIdAndUpdate(lead._id, { conversationId });
     }
 
-    const message = await prisma.message.create({
-      data: {
-        conversationId,
-        leadId: lead.id,
-        userId: session.user.id,
-        role: 'OWNER',
-        content,
-        subject: subject || `Re: ${lead.companyName}`,
-        aiGenerated: false,
-        providerMessageId: result.providerMessageId,
-        threadId: result.threadId,
-        status: 'SENT',
-      },
+    const message = await Message.create({
+      conversationId,
+      leadId: lead._id,
+      userId: session.user.id,
+      role: 'OWNER',
+      content,
+      subject: subject || `Re: ${lead.companyName}`,
+      aiGenerated: false,
+      providerMessageId: result.providerMessageId,
+      threadId: result.threadId,
+      status: 'SENT',
     });
 
-    await prisma.userLead.update({
-      where: { id: lead.id },
-      data: { lastMessageDate: new Date() },
-    });
+    await UserLead.findByIdAndUpdate(lead._id, { lastMessageDate: new Date() });
 
-    return NextResponse.json({ success: true, message });
+    return NextResponse.json({ success: true, message: { ...message.toObject(), id: message._id.toString() } });
   } catch {
     return NextResponse.json({ error: 'Failed to send manual message.' }, { status: 500 });
   }

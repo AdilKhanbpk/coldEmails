@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
-import { prisma } from '@/lib/prisma';
+import { connectDB } from '@/lib/mongodb';
+import User from '@/models/User';
 
 export async function POST(req: Request) {
   try {
@@ -10,9 +11,6 @@ export async function POST(req: Request) {
       email?: string;
       password?: string;
     };
-
-    // ---- Server-side validation ----
-    const errors: { field?: string; error: string } = { error: '' };
 
     if (!name || name.trim().length < 2) {
       return NextResponse.json(
@@ -35,14 +33,11 @@ export async function POST(req: Request) {
       );
     }
 
-    void errors;
-
     const normalizedEmail = email.trim().toLowerCase();
 
-    // ---- Duplicate email check ----
-    const existing = await prisma.user.findUnique({
-      where: { email: normalizedEmail },
-    });
+    await connectDB();
+
+    const existing = await User.findOne({ email: normalizedEmail });
 
     if (existing) {
       return NextResponse.json(
@@ -51,16 +46,13 @@ export async function POST(req: Request) {
       );
     }
 
-    // ---- Hash password and create user ----
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    await prisma.user.create({
-      data: {
-        name: name.trim(),
-        email: normalizedEmail,
-        password: hashedPassword,
-        role: 'ADMIN',
-      },
+    await User.create({
+      name: name.trim(),
+      email: normalizedEmail,
+      password: hashedPassword,
+      role: 'ADMIN',
     });
 
     return NextResponse.json({ success: true }, { status: 201 });

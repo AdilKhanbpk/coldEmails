@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
+import { connectDB } from '@/lib/mongodb';
+import User from '@/models/User';
 import bcrypt from 'bcryptjs';
 
 export async function PUT(req: Request) {
@@ -31,10 +32,8 @@ export async function PUT(req: Request) {
       );
     }
 
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { password: true },
-    });
+    await connectDB();
+    const user = await User.findById(session.user.id).select('password').lean();
 
     if (!user?.password) {
       return NextResponse.json(
@@ -52,10 +51,7 @@ export async function PUT(req: Request) {
     }
 
     const hashed = await bcrypt.hash(newPassword, 10);
-    await prisma.user.update({
-      where: { id: session.user.id },
-      data: { password: hashed },
-    });
+    await User.findByIdAndUpdate(session.user.id, { password: hashed });
 
     return NextResponse.json({ success: true });
   } catch {

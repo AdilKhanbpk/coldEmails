@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { processIncomingReply } from '@/lib/email-worker';
-import { prisma } from '@/lib/prisma';
+import { connectDB } from '@/lib/mongodb';
+import Inbox from '@/models/Inbox';
 
 // ---------------------------------------------------------------------------
 // Gmail push notification webhook (Google Cloud Pub/Sub).
@@ -25,9 +26,8 @@ export async function POST(req: NextRequest) {
     }
 
     // Find the inbox by email address
-    const inbox = await prisma.inbox.findFirst({
-      where: { emailAddress, status: 'CONNECTED' },
-    });
+    await connectDB();
+    const inbox = await Inbox.findOne({ emailAddress, status: 'CONNECTED' }).lean();
 
     if (!inbox) {
       return NextResponse.json({ error: 'Inbox not found' }, { status: 404 });

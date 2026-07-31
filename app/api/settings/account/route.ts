@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
+import { connectDB } from '@/lib/mongodb';
+import User from '@/models/User';
 
 export async function PUT(req: Request) {
   try {
@@ -17,10 +18,8 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: 'Name is required.' }, { status: 400 });
     }
 
-    await prisma.user.update({
-      where: { id: session.user.id },
-      data: { name: name.trim() },
-    });
+    await connectDB();
+    await User.findByIdAndUpdate(session.user.id, { name: name.trim() });
 
     return NextResponse.json({ success: true });
   } catch {

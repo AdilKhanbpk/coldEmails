@@ -2,10 +2,9 @@ import Stripe from 'stripe';
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
+import { connectDB } from '@/lib/mongodb';
+import User from '@/models/User';
 
-// Create a Stripe Checkout session for subscription upgrades.
-// Price IDs are configured via environment variables.
 export async function POST(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -34,26 +33,20 @@ export async function POST(req: NextRequest) {
 
     const stripe = new Stripe(stripeKey);
 
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { email: true, stripeCustomerId: true },
-    });
+    await connectDB();
+    const user = await User.findById(session.user.id).select('email stripeCustomerId').lean();
 
     if (!user) {
       return NextResponse.json({ error: 'User not found.' }, { status: 404 });
     }
 
-    // Create or reuse Stripe customer
     let customerId = user.stripeCustomerId;
     if (!customerId) {
       const customer = await stripe.customers.create({
         email: user.email,
       });
       customerId = customer.id;
-      await prisma.user.update({
-        where: { id: session.user.id },
-        data: { stripeCustomerId: customerId },
-      });
+      await User.findByIdAndUpdate(session.user.id, { stripeCustomerId: customerId });
     }
 
     const checkoutSession = await stripe.checkout.sessions.create({

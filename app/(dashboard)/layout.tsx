@@ -1,6 +1,7 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
+import { connectDB } from '@/lib/mongodb';
+import User from '@/models/User';
 import { redirect } from 'next/navigation';
 import { Sidebar } from '@/components/sidebar';
 import { TopBar } from '@/components/topbar';
@@ -16,10 +17,10 @@ export default async function DashboardLayout({
     redirect('/login');
   }
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { name: true, email: true, businessName: true, businessDescription: true, services: true, role: true },
-  });
+  await connectDB();
+  const user = await User.findById(session.user.id)
+    .select('name email businessName businessDescription services role')
+    .lean();
 
   if (!user) {
     redirect('/login');
@@ -32,17 +33,23 @@ export default async function DashboardLayout({
     redirect('/onboarding/business-profile');
   }
 
-  const leads = await prisma.userLead.findMany({
-    where: { userId: session.user.id },
-    select: { id: true, companyName: true, email: true },
-    take: 100,
-  });
+  const leads = await (await import('@/models/UserLead')).default
+    .find({ userId: session.user.id })
+    .select('companyName email')
+    .limit(100)
+    .lean();
+
+  const formattedLeads = leads.map((l: any) => ({
+    id: l._id.toString(),
+    companyName: l.companyName,
+    email: l.email,
+  }));
 
   return (
     <div className="flex h-screen overflow-hidden bg-gray-50">
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
-        <TopBar userName={user.name} userEmail={user.email} userRole={user.role} leads={leads} />
+        <TopBar userName={user.name} userEmail={user.email} userRole={user.role} leads={formattedLeads} />
         <main className="flex-1 overflow-y-auto">{children}</main>
       </div>
     </div>

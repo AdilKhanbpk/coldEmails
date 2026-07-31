@@ -1,14 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
+import { connectDB } from '@/lib/mongodb';
+import Meeting from '@/models/Meeting';
 import { confirmMeeting, cancelMeeting, rescheduleMeeting } from '@/lib/reply-handler';
 
 interface Params {
   params: { id: string };
 }
 
-// Get meetings for a specific lead
 export async function GET(req: Request, { params }: Params) {
   try {
     const session = await getServerSession(authOptions);
@@ -16,19 +16,24 @@ export async function GET(req: Request, { params }: Params) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const meetings = await prisma.meeting.findMany({
-      where: { leadId: params.id, userId: session.user.id },
-      orderBy: { scheduledTime: 'asc' },
-      include: { lead: { select: { companyName: true, email: true } } },
-    });
+    await connectDB();
+    const meetings = await Meeting.find({ leadId: params.id, userId: session.user.id })
+      .sort({ scheduledTime: 1 })
+      .populate({ path: 'leadId', select: 'companyName email' })
+      .lean();
 
-    return NextResponse.json({ meetings });
+    const formatted = meetings.map((m: any) => ({
+      ...m,
+      id: m._id.toString(),
+      lead: m.leadId ? { companyName: m.leadId.companyName, email: m.leadId.email } : null,
+    }));
+
+    return NextResponse.json({ meetings: formatted });
   } catch {
     return NextResponse.json({ error: 'Failed to fetch meetings.' }, { status: 500 });
   }
 }
 
-// Confirm a proposed meeting
 export async function POST(req: Request, { params }: Params) {
   try {
     const session = await getServerSession(authOptions);
@@ -51,7 +56,6 @@ export async function POST(req: Request, { params }: Params) {
   }
 }
 
-// Cancel or reschedule a meeting
 export async function PATCH(req: Request, { params }: Params) {
   try {
     const session = await getServerSession(authOptions);

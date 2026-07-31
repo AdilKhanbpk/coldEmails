@@ -3,7 +3,8 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import GoogleProvider from 'next-auth/providers/google';
 import MicrosoftProvider from 'next-auth/providers/azure-ad';
 import bcrypt from 'bcryptjs';
-import { prisma } from './prisma';
+import { connectDB } from './mongodb';
+import User from '../models/User';
 
 export const authOptions: NextAuthOptions = {
   session: {
@@ -24,9 +25,8 @@ export const authOptions: NextAuthOptions = {
           throw new Error('Email and password are required.');
         }
 
-        const user = await prisma.user.findUnique({
-          where: { email: credentials.email.toLowerCase() },
-        });
+        await connectDB();
+        const user = await User.findOne({ email: credentials.email.toLowerCase() });
 
         if (!user || !user.password) {
           throw new Error('No account found with that email. Try signing up.');
@@ -41,7 +41,7 @@ export const authOptions: NextAuthOptions = {
         }
 
         return {
-          id: user.id,
+          id: (user._id as string).toString(),
           name: user.name,
           email: user.email,
         };
@@ -78,17 +78,14 @@ export const authOptions: NextAuthOptions = {
       if (account && (account.provider === 'google' || account.provider === 'azure-ad')) {
         if (!user.email) return false;
 
-        const existing = await prisma.user.findUnique({
-          where: { email: user.email.toLowerCase() },
-        });
+        await connectDB();
+        const existing = await User.findOne({ email: user.email.toLowerCase() });
 
         if (!existing) {
-          await prisma.user.create({
-            data: {
-              name: user.name || 'New User',
-              email: user.email.toLowerCase(),
-              role: 'ADMIN',
-            },
+          await User.create({
+            name: user.name || 'New User',
+            email: user.email.toLowerCase(),
+            role: 'ADMIN',
           });
         }
       }

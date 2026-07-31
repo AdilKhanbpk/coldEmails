@@ -1,11 +1,10 @@
 import Stripe from 'stripe';
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
+import { connectDB } from '@/lib/mongodb';
+import User from '@/models/User';
 
-// Create a Stripe Billing Portal session so users can manage their subscription,
-// upgrade/downgrade, and view invoices.
 export async function POST() {
   try {
     const session = await getServerSession(authOptions);
@@ -20,10 +19,8 @@ export async function POST() {
 
     const stripe = new Stripe(stripeKey);
 
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { stripeCustomerId: true },
-    });
+    await connectDB();
+    const user = await User.findById(session.user.id).select('stripeCustomerId').lean();
 
     if (!user?.stripeCustomerId) {
       return NextResponse.json({ error: 'No billing account found. Subscribe to a plan first.' }, { status: 400 });

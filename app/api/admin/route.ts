@@ -1,11 +1,12 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
+import { connectDB } from '@/lib/mongodb';
 import { getCurrentUser, hasPermission } from '@/lib/permissions';
+import Job from '@/models/Job';
+import User from '@/models/User';
 type Role = string;
 
-// Admin panel — get system logs (job failures, send failures)
 export async function GET() {
   try {
     const session = await getServerSession(authOptions);
@@ -18,38 +19,40 @@ export async function GET() {
       return NextResponse.json({ error: 'Admin access required.' }, { status: 403 });
     }
 
+    await connectDB();
+
     const [failedJobs, users, stats] = await Promise.all([
-      prisma.job.findMany({
-        where: { status: 'FAILED' },
-        orderBy: { createdAt: 'desc' },
-        take: 50,
-        include: {
-          lead: { select: { companyName: true, email: true } },
-        },
-      }),
-      prisma.user.findMany({
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          role: true,
-          plan: true,
-          status: true,
-          createdAt: true,
-        },
-        orderBy: { createdAt: 'asc' },
-      }),
+      Job.find({ status: 'FAILED' })
+        .sort({ createdAt: -1 })
+        .limit(50)
+        .populate({ path: 'leadId', select: 'companyName email' })
+        .lean(),
+      User.find()
+        .select('id name email role plan status createdAt')
+        .sort({ createdAt: 1 })
+        .lean(),
       Promise.all([
-        prisma.job.count({ where: { status: 'SCHEDULED' } }),
-        prisma.job.count({ where: { status: 'RUNNING' } }),
-        prisma.job.count({ where: { status: 'FAILED' } }),
-        prisma.job.count({ where: { status: 'COMPLETED' } }),
+        Job.countDocuments({ status: 'SCHEDULED' }),
+        Job.countDocuments({ status: 'RUNNING' }),
+        Job.countDocuments({ status: 'FAILED' }),
+        Job.countDocuments({ status: 'COMPLETED' }),
       ]).then(([scheduled, running, failed, completed]) => ({
         scheduled, running, failed, completed,
       })),
     ]);
 
-    return NextResponse.json({ failedJobs, users, stats });
+    const formattedJobs = failedJobs.map((j: any) => ({
+      ...j,
+      id: j._id.toString(),
+      lead: j.leadId ? { companyName: j.leadId.companyName, email: j.leadId.email } : null,
+    }));
+
+    const formattedUsers = users.map((u: any) => ({
+      ...u,
+      id: u._id.toString(),
+    }));
+
+    return NextResponse.json({ failedJobs: formattedJobs, users: formattedUsers, stats });
   } catch {
     return NextResponse.json({ error: 'Failed to fetch admin data.' }, { status: 500 });
   }

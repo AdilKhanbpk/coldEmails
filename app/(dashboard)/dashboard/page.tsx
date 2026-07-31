@@ -1,10 +1,17 @@
 import Link from 'next/link';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
+import { connectDB } from '@/lib/mongodb';
+import UserLead from '@/models/UserLead';
+import Conversation from '@/models/Conversation';
+import Meeting from '@/models/Meeting';
+import Message from '@/models/Message';
+import Job from '@/models/Job';
+import Inbox from '@/models/Inbox';
+import ActivityLog from '@/models/ActivityLog';
+import OutreachType from '@/models/OutreachType';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
 import {
   Users, MessageSquare, Calendar, Send, Plus, ArrowRight,
   Clock, CheckCircle2, AlertTriangle, XCircle, Mail, Activity,
@@ -12,15 +19,18 @@ import {
 } from 'lucide-react';
 import { DashboardUpdates } from './dashboard-updates';
 import { OnboardingChecklist } from '@/components/onboarding-checklist';
-import { SkeletonCard } from '@/components/skeletons';
 import { format } from 'date-fns';
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
   const userId = session!.user.id;
 
+  await connectDB();
+
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  const repliedStatuses = ['REPLIED', 'MEETING_BOOKED', 'COMPLETED', 'NOT_INTERESTED'];
 
   const [
     totalLeads, activeConversations, meetingsBooked, emailsSentThisMonth,
@@ -30,24 +40,24 @@ export default async function DashboardPage() {
     recentActivity,
     outreachTypeCount,
   ] = await Promise.all([
-    prisma.userLead.count({ where: { userId } }),
-    prisma.conversation.count({ where: { userId, status: 'ACTIVE' } }),
-    prisma.meeting.count({ where: { userId, status: 'CONFIRMED' } }),
-    prisma.message.count({ where: { userId, role: 'ASSISTANT', createdAt: { gte: monthStart } } }),
-    prisma.message.count({ where: { userId, role: 'ASSISTANT' } }),
-    prisma.message.count({ where: { userId, role: 'ASSISTANT', openedAt: { not: null } } }),
-    prisma.userLead.count({ where: { userId, status: { in: ['REPLIED', 'MEETING_BOOKED', 'COMPLETED', 'NOT_INTERESTED'] } } }),
-    prisma.job.count({ where: { userId, status: 'SCHEDULED' } }),
-    prisma.job.count({ where: { userId, status: 'RUNNING' } }),
-    prisma.job.count({ where: { userId, status: 'FAILED' } }),
-    prisma.inbox.count({ where: { userId, status: 'CONNECTED' } }),
-    prisma.inbox.count({ where: { userId, status: 'EXPIRED' } }),
-    prisma.activityLog.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 8,
-      include: { user: { select: { name: true } } },
-    }),
-    prisma.outreachType.count({ where: { userId } }),
+    UserLead.countDocuments({ userId }),
+    Conversation.countDocuments({ userId, status: 'ACTIVE' }),
+    Meeting.countDocuments({ userId, status: 'CONFIRMED' }),
+    Message.countDocuments({ userId, role: 'ASSISTANT', createdAt: { $gte: monthStart } }),
+    Message.countDocuments({ userId, role: 'ASSISTANT' }),
+    Message.countDocuments({ userId, role: 'ASSISTANT', openedAt: { $ne: null } }),
+    UserLead.countDocuments({ userId, status: { $in: repliedStatuses } }),
+    Job.countDocuments({ userId, status: 'SCHEDULED' }),
+    Job.countDocuments({ userId, status: 'RUNNING' }),
+    Job.countDocuments({ userId, status: 'FAILED' }),
+    Inbox.countDocuments({ userId, status: 'CONNECTED' }),
+    Inbox.countDocuments({ userId, status: 'EXPIRED' }),
+    ActivityLog.find()
+      .sort({ createdAt: -1 })
+      .limit(8)
+      .populate({ path: 'userId', select: 'name' })
+      .lean(),
+    OutreachType.countDocuments({ userId }),
   ]);
 
   const openRate = emailsSentTotal > 0 ? Math.round((openedCount / emailsSentTotal) * 1000) / 10 : 0;
@@ -69,19 +79,25 @@ export default async function DashboardPage() {
 
   const isEmpty = totalLeads === 0 && scheduledJobs === 0;
 
-  const inboxes = await prisma.inbox.findMany({
-    where: { userId, status: 'CONNECTED' },
-    select: { emailAddress: true, dailySendingCap: true, warmupThrottle: true, sentToday: true, sentDate: true },
-  });
+  const inboxes = await Inbox.find({ userId, status: 'CONNECTED' })
+    .select('emailAddress dailySendingCap warmupThrottle sentToday sentDate')
+    .lean();
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
-  const inboxUsage = inboxes.map((inbox) => {
+  const inboxUsage = inboxes.map((inbox: any) => {
     const sentDate = inbox.sentDate ? new Date(inbox.sentDate) : null;
     const isSameDay = sentDate && sentDate.getTime() === today.getTime();
     const sent = isSameDay ? inbox.sentToday : 0;
     const cap = inbox.warmupThrottle ? Math.min(inbox.dailySendingCap, 20) : inbox.dailySendingCap;
     return { emailAddress: inbox.emailAddress, sent, cap };
   });
+
+  const formattedActivity = recentActivity.map((log: any) => ({
+    ...log,
+    id: log._id.toString(),
+    user: log.userId ? { name: log.userId.name } : { name: 'Unknown' },
+    createdAt: log.createdAt,
+  }));
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-8">
@@ -93,7 +109,6 @@ export default async function DashboardPage() {
         <DashboardUpdates />
       </div>
 
-      {/* Onboarding Checklist */}
       <OnboardingChecklist steps={[
         { id: 'inbox', label: 'Connect an inbox', href: '/settings/inboxes', cta: 'Connect', done: connectedInboxes > 0 },
         { id: 'outreach', label: 'Create your first Outreach Type', href: '/outreach-types', cta: 'Create', done: outreachTypeCount > 0 },
@@ -101,7 +116,6 @@ export default async function DashboardPage() {
         { id: 'campaign', label: 'Launch your first campaign', href: '/leads', cta: 'Launch', done: scheduledJobs > 0 || emailsSentThisMonth > 0 },
       ]} />
 
-      {/* Summary Cards */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {cards.map((card) => {
           const Icon = card.icon;
@@ -119,7 +133,6 @@ export default async function DashboardPage() {
         })}
       </div>
 
-      {/* Engagement Cards */}
       <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {engagementCards.map((card) => {
           const Icon = card.icon;
@@ -137,7 +150,6 @@ export default async function DashboardPage() {
         })}
       </div>
 
-      {/* Queue + Inbox Health */}
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
         <Card className="border-gray-200 shadow-sm">
           <CardContent className="p-5">
@@ -175,8 +187,7 @@ export default async function DashboardPage() {
         </Card>
       </div>
 
-      {/* Recent Activity Feed */}
-      {recentActivity.length > 0 && (
+      {formattedActivity.length > 0 && (
         <Card className="mt-6 border-gray-200 shadow-sm">
           <CardContent className="p-5">
             <div className="mb-4 flex items-center justify-between">
@@ -184,7 +195,7 @@ export default async function DashboardPage() {
               <Link href="/team"><Button variant="ghost" size="sm" className="text-gray-500 hover:text-gray-900">View All</Button></Link>
             </div>
             <div className="space-y-2">
-              {recentActivity.map((log) => (
+              {formattedActivity.map((log) => (
                 <div key={log.id} className="flex items-start gap-3 rounded-md px-2 py-1.5 text-sm">
                   <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100">
                     <Activity className="h-3 w-3 text-gray-500" />
@@ -202,7 +213,6 @@ export default async function DashboardPage() {
         </Card>
       )}
 
-      {/* Empty State */}
       {isEmpty && (
         <Card className="mt-8 border-gray-200 border-dashed bg-white shadow-sm">
           <CardContent className="flex flex-col items-center justify-center px-6 py-16 text-center">

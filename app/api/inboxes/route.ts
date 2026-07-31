@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
+import { connectDB } from '@/lib/mongodb';
+import Inbox from '@/models/Inbox';
 import { encryptJSON } from '@/lib/crypto';
 import { testSMTPConnection } from '@/lib/email-sender';
 
@@ -12,23 +13,15 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const inboxes = await prisma.inbox.findMany({
-      where: { userId: session.user.id },
-      orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        provider: true,
-        emailAddress: true,
-        status: true,
-        dailySendingCap: true,
-        warmupThrottle: true,
-        sentToday: true,
-        sentDate: true,
-        createdAt: true,
-      },
-    });
+    await connectDB();
+    const inboxes = await Inbox.find({ userId: session.user.id })
+      .sort({ createdAt: -1 })
+      .select('provider emailAddress status dailySendingCap warmupThrottle sentToday sentDate createdAt')
+      .lean();
 
-    return NextResponse.json(inboxes);
+    const formatted = inboxes.map((i: any) => ({ ...i, id: i._id.toString() }));
+
+    return NextResponse.json(formatted);
   } catch {
     return NextResponse.json({ error: 'Failed to fetch inboxes.' }, { status: 500 });
   }
@@ -52,8 +45,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Provider and email address are required.' }, { status: 400 });
     }
 
-    const existing = await prisma.inbox.findFirst({
-      where: { userId: session.user.id, emailAddress: emailAddress.toLowerCase() },
+    await connectDB();
+
+    const existing = await Inbox.findOne({
+      userId: session.user.id,
+      emailAddress: emailAddress.toLowerCase(),
     });
     if (existing) {
       return NextResponse.json({ error: 'This email address is already connected.' }, { status: 409 });
@@ -61,18 +57,23 @@ export async function POST(req: NextRequest) {
 
     const encrypted = encryptJSON(credentials);
 
-    const inbox = await prisma.inbox.create({
-      data: {
-        userId: session.user.id,
-        provider,
-        emailAddress: emailAddress.toLowerCase(),
-        credentials: encrypted,
-        status: 'CONNECTED',
-      },
-      select: { id: true, provider: true, emailAddress: true, status: true },
+    const inbox = await Inbox.create({
+      userId: session.user.id,
+      provider,
+      emailAddress: emailAddress.toLowerCase(),
+      credentials: encrypted,
+      status: 'CONNECTED',
     });
 
-    return NextResponse.json(inbox, { status: 201 });
+    return NextResponse.json(
+      {
+        id: (inbox._id as string).toString(),
+        provider: inbox.provider,
+        emailAddress: inbox.emailAddress,
+        status: inbox.status,
+      },
+      { status: 201 },
+    );
   } catch {
     return NextResponse.json({ error: 'Failed to connect inbox.' }, { status: 500 });
   }

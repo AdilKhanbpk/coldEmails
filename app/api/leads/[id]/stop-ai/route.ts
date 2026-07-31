@@ -1,15 +1,15 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
+import { connectDB } from '@/lib/mongodb';
+import UserLead from '@/models/UserLead';
+import Conversation from '@/models/Conversation';
 import { cancelJobsForLead } from '@/lib/scheduler';
 
 interface Params {
   params: { id: string };
 }
 
-// Stop AI for a specific lead — sets aiEnabled=false on both Lead and Conversation.
-// Cancels any pending AI-reply jobs for that lead only.
 export async function POST(req: Request, { params }: Params) {
   try {
     const session = await getServerSession(authOptions);
@@ -17,28 +17,22 @@ export async function POST(req: Request, { params }: Params) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const lead = await prisma.userLead.findFirst({
-      where: { id: params.id, userId: session.user.id },
-      select: { id: true, aiEnabled: true, conversationId: true },
-    });
+    await connectDB();
+    const lead = await UserLead.findOne({ _id: params.id, userId: session.user.id })
+      .select('_id aiEnabled conversationId')
+      .lean();
 
     if (!lead) {
       return NextResponse.json({ error: 'Lead not found.' }, { status: 404 });
     }
 
-    await prisma.userLead.update({
-      where: { id: lead.id },
-      data: { aiEnabled: false },
-    });
+    await UserLead.findByIdAndUpdate(params.id, { aiEnabled: false });
 
     if (lead.conversationId) {
-      await prisma.conversation.update({
-        where: { id: lead.conversationId },
-        data: { aiEnabled: false },
-      });
+      await Conversation.findByIdAndUpdate(lead.conversationId, { aiEnabled: false });
     }
 
-    await cancelJobsForLead(lead.id);
+    await cancelJobsForLead(params.id);
 
     return NextResponse.json({ success: true, aiEnabled: false });
   } catch {

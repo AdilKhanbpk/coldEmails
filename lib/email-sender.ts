@@ -2,7 +2,7 @@ import nodemailer from 'nodemailer';
 import { google } from 'googleapis';
 import { Client } from '@microsoft/microsoft-graph-client';
 import { decryptJSON } from './crypto';
-import { Inbox } from '@prisma/client';
+import type { IInbox } from '../models/Inbox';
 
 export interface SendResult {
   providerMessageId: string;
@@ -39,7 +39,7 @@ interface SMTPCredentials {
   secure: boolean;
 }
 
-export async function sendEmail(inbox: Inbox, payload: EmailPayload): Promise<SendResult> {
+export async function sendEmail(inbox: IInbox, payload: EmailPayload): Promise<SendResult> {
   switch (inbox.provider) {
     case 'GMAIL':
       return sendViaGmail(inbox, payload);
@@ -52,7 +52,7 @@ export async function sendEmail(inbox: Inbox, payload: EmailPayload): Promise<Se
   }
 }
 
-async function sendViaGmail(inbox: Inbox, payload: EmailPayload): Promise<SendResult> {
+async function sendViaGmail(inbox: IInbox, payload: EmailPayload): Promise<SendResult> {
   const creds = decryptJSON<GmailCredentials>(inbox.credentials);
   const oauth2Client = new google.auth.OAuth2(creds.clientId, creds.clientSecret);
   oauth2Client.setCredentials({
@@ -92,7 +92,7 @@ async function sendViaGmail(inbox: Inbox, payload: EmailPayload): Promise<SendRe
   }
 }
 
-async function sendViaOutlook(inbox: Inbox, payload: EmailPayload): Promise<SendResult> {
+async function sendViaOutlook(inbox: IInbox, payload: EmailPayload): Promise<SendResult> {
   const creds = decryptJSON<OutlookCredentials>(inbox.credentials);
 
   const client = Client.init({
@@ -123,7 +123,7 @@ async function sendViaOutlook(inbox: Inbox, payload: EmailPayload): Promise<Send
   }
 }
 
-async function sendViaSMTP(inbox: Inbox, payload: EmailPayload): Promise<SendResult> {
+async function sendViaSMTP(inbox: IInbox, payload: EmailPayload): Promise<SendResult> {
   const creds = decryptJSON<SMTPCredentials>(inbox.credentials);
 
   const transporter = nodemailer.createTransport({

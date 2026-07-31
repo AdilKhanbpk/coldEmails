@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
+import { connectDB } from '@/lib/mongodb';
+import UserLead from '@/models/UserLead';
+import Message from '@/models/Message';
 
 interface Params {
   params: { id: string };
 }
 
-// Get all messages for a lead's conversation
 export async function GET(req: Request, { params }: Params) {
   try {
     const session = await getServerSession(authOptions);
@@ -15,30 +16,23 @@ export async function GET(req: Request, { params }: Params) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const lead = await prisma.userLead.findFirst({
-      where: { id: params.id, userId: session.user.id },
-      select: { id: true, conversationId: true },
-    });
+    await connectDB();
+    const lead = await UserLead.findOne({ _id: params.id, userId: session.user.id })
+      .select('_id conversationId')
+      .lean();
 
     if (!lead) {
       return NextResponse.json({ error: 'Lead not found.' }, { status: 404 });
     }
 
-    const messages = await prisma.message.findMany({
-      where: { leadId: params.id },
-      orderBy: { createdAt: 'asc' },
-      select: {
-        id: true,
-        role: true,
-        content: true,
-        subject: true,
-        aiGenerated: true,
-        senderEmail: true,
-        createdAt: true,
-      },
-    });
+    const messages = await Message.find({ leadId: params.id })
+      .sort({ createdAt: 1 })
+      .select('role content subject aiGenerated senderEmail createdAt')
+      .lean();
 
-    return NextResponse.json({ messages });
+    const formatted = messages.map((m: any) => ({ ...m, id: m._id.toString() }));
+
+    return NextResponse.json({ messages: formatted });
   } catch {
     return NextResponse.json({ error: 'Failed to fetch messages.' }, { status: 500 });
   }

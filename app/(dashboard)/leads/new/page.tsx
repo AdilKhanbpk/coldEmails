@@ -1,6 +1,7 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
+import { connectDB } from '@/lib/mongodb';
+import OutreachType from '@/models/OutreachType';
 import { redirect } from 'next/navigation';
 import { LeadForm } from '../lead-form';
 
@@ -8,11 +9,12 @@ export default async function NewLeadPage() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) redirect('/login');
 
-  const outreachTypes = await prisma.outreachType.findMany({
-    where: { userId: session.user.id, active: true },
-    select: { id: true, name: true },
-    orderBy: { name: 'asc' },
-  });
+  await connectDB();
+  const outreachTypes = await OutreachType.find({ userId: session.user.id, active: true })
+    .select('name')
+    .lean();
 
-  return <LeadForm outreachTypes={outreachTypes} />;
+  const formatted = outreachTypes.map((ot: any) => ({ id: ot._id.toString(), name: ot.name }));
+
+  return <LeadForm outreachTypes={formatted} />;
 }

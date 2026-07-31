@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
+import { connectDB } from '@/lib/mongodb';
+import OutreachType from '@/models/OutreachType';
+import UserLead from '@/models/UserLead';
 
 interface Params {
   params: { id: string };
@@ -14,16 +16,16 @@ export async function GET(req: Request, { params }: Params) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const outreachType = await prisma.outreachType.findFirst({
-      where: { id: params.id, userId: session.user.id },
-      include: { _count: { select: { leads: true } } },
-    });
+    await connectDB();
+    const outreachType = await OutreachType.findOne({ _id: params.id, userId: session.user.id }).lean();
 
     if (!outreachType) {
       return NextResponse.json({ error: 'Not found.' }, { status: 404 });
     }
 
-    return NextResponse.json(outreachType);
+    const leadCount = await UserLead.countDocuments({ outreachTypeId: params.id });
+
+    return NextResponse.json({ ...outreachType, id: outreachType._id.toString(), _count: { leads: leadCount } });
   } catch {
     return NextResponse.json({ error: 'Failed to fetch.' }, { status: 500 });
   }
@@ -45,9 +47,8 @@ export async function PUT(req: Request, { params }: Params) {
       active?: boolean;
     };
 
-    const existing = await prisma.outreachType.findFirst({
-      where: { id: params.id, userId: session.user.id },
-    });
+    await connectDB();
+    const existing = await OutreachType.findOne({ _id: params.id, userId: session.user.id }).lean();
     if (!existing) {
       return NextResponse.json({ error: 'Not found.' }, { status: 404 });
     }
@@ -71,27 +72,24 @@ export async function PUT(req: Request, { params }: Params) {
       );
     }
 
-    const updated = await prisma.outreachType.update({
-      where: { id: params.id },
-      data: {
+    const updated = await OutreachType.findByIdAndUpdate(
+      params.id,
+      {
         name: name.trim(),
         systemPrompt: systemPrompt.trim(),
         exampleEmails: exampleEmails.map((e) => e.trim()),
         sequenceSteps,
         active: active !== false,
       },
-    });
+      { new: true },
+    ).lean();
 
-    return NextResponse.json(updated);
+    return NextResponse.json({ ...updated, id: updated!._id.toString() });
   } catch {
     return NextResponse.json({ error: 'Failed to update.' }, { status: 500 });
   }
 }
 
-// Soft-disable toggle: switching active to false does NOT delete the outreach type
-// and does NOT affect leads already assigned to it. Future scheduling logic will
-// check the `active` flag before starting new sequences on leads, but in-flight
-// sequences continue. This is a soft-disable, not a deletion.
 export async function PATCH(req: Request, { params }: Params) {
   try {
     const session = await getServerSession(authOptions);
@@ -102,14 +100,12 @@ export async function PATCH(req: Request, { params }: Params) {
     const body = await req.json();
     const { active } = body as { active?: boolean };
 
-    const existing = await prisma.outreachType.findFirst({
-      where: { id: params.id, userId: session.user.id },
-    });
+    await connectDB();
+    const existing = await OutreachType.findOne({ _id: params.id, userId: session.user.id }).lean();
     if (!existing) {
       return NextResponse.json({ error: 'Not found.' }, { status: 404 });
     }
 
-    // If trying to activate, ensure all 4 example emails are present.
     if (active) {
       if (
         existing.exampleEmails.length !== 4 ||
@@ -122,12 +118,13 @@ export async function PATCH(req: Request, { params }: Params) {
       }
     }
 
-    const updated = await prisma.outreachType.update({
-      where: { id: params.id },
-      data: { active: active ?? !existing.active },
-    });
+    const updated = await OutreachType.findByIdAndUpdate(
+      params.id,
+      { active: active ?? !existing.active },
+      { new: true },
+    ).lean();
 
-    return NextResponse.json(updated);
+    return NextResponse.json({ ...updated, id: updated!._id.toString() });
   } catch {
     return NextResponse.json({ error: 'Failed to toggle.' }, { status: 500 });
   }
@@ -140,27 +137,24 @@ export async function DELETE(req: Request, { params }: Params) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const existing = await prisma.outreachType.findFirst({
-      where: { id: params.id, userId: session.user.id },
-      include: { _count: { select: { leads: true } } },
-    });
+    await connectDB();
+    const existing = await OutreachType.findOne({ _id: params.id, userId: session.user.id }).lean();
     if (!existing) {
       return NextResponse.json({ error: 'Not found.' }, { status: 404 });
     }
 
-    // Hard delete is blocked when leads are assigned. The user must deactivate
-    // instead so assigned leads keep their reference (the FK is ON DELETE SET NULL
-    // at the DB level, but we block here to avoid silently orphaning leads).
-    if (existing._count.leads > 0) {
+    const leadCount = await UserLead.countDocuments({ outreachTypeId: params.id });
+
+    if (leadCount > 0) {
       return NextResponse.json(
         {
-          error: `Deactivate instead — ${existing._count.leads} ${existing._count.leads === 1 ? 'lead is' : 'leads are'} using this type.`,
+          error: `Deactivate instead — ${leadCount} ${leadCount === 1 ? 'lead is' : 'leads are'} using this type.`,
         },
         { status: 409 },
       );
     }
 
-    await prisma.outreachType.delete({ where: { id: params.id } });
+    await OutreachType.findByIdAndDelete(params.id);
 
     return NextResponse.json({ success: true });
   } catch {

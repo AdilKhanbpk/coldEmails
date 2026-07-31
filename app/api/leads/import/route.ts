@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
+import { connectDB } from '@/lib/mongodb';
+import UserLead from '@/models/UserLead';
+import OutreachType from '@/models/OutreachType';
 import { parseFile } from '@/lib/parse-file';
 import { scheduleJob, convertToUTC } from '@/lib/scheduler';
 
@@ -20,7 +22,7 @@ type StandardField = (typeof STANDARD_FIELDS)[number];
 
 interface ImportBody {
   fileName: string;
-  fileContent: string; // base64-encoded for CSV, or base64 for Excel
+  fileContent: string;
   mapping: Record<string, StandardField | 'ignore'>;
   outreachTypeId: string;
   duplicateMode: 'skip' | 'update';
@@ -66,15 +68,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'An outreach type is required for import.' }, { status: 400 });
     }
 
-    // Verify outreach type belongs to user
-    const outreachType = await prisma.outreachType.findFirst({
-      where: { id: outreachTypeId, userId: session.user.id },
-    });
+    await connectDB();
+
+    const outreachType = await OutreachType.findOne({
+      _id: outreachTypeId,
+      userId: session.user.id,
+    }).lean();
     if (!outreachType) {
       return NextResponse.json({ error: 'Invalid outreach type.' }, { status: 400 });
     }
 
-    // Decode file content from base64
     const fileBuffer = Buffer.from(body.fileContent, 'base64');
     const parsed = parseFile(fileName, fileBuffer);
 
@@ -82,7 +85,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No rows found in file.' }, { status: 400 });
     }
 
-    // Build a reverse mapping: standardField -> fileColumn
     const fieldToColumn: Partial<Record<StandardField, string>> = {};
     for (const [column, field] of Object.entries(mapping)) {
       if (field !== 'ignore') {
@@ -90,7 +92,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Validate that required fields are mapped
     if (!fieldToColumn.companyName) {
       return NextResponse.json({ error: 'Company name column must be mapped.' }, { status: 400 });
     }
@@ -102,20 +103,17 @@ export async function POST(req: NextRequest) {
     const invalidRows: InvalidRow[] = [];
     const duplicateRows: DuplicateRow[] = [];
 
-    // Collect all emails for batch duplicate check
     const allEmails = parsed.rows.map((row) => {
       const col = fieldToColumn.email!;
       return row[col]?.trim().toLowerCase() || '';
     }).filter(Boolean);
 
-    const existingLeads = await prisma.userLead.findMany({
-      where: {
-        userId: session.user.id,
-        email: { in: allEmails },
-      },
-      select: { id: true, email: true },
-    });
-    const existingEmailMap = new Map(existingLeads.map((l) => [l.email, l.id]));
+    const existingLeads = await UserLead.find({
+      userId: session.user.id,
+      email: { $in: allEmails },
+    }).select('_id email').lean();
+
+    const existingEmailMap = new Map(existingLeads.map((l: any) => [l.email, l._id.toString()]));
 
     for (let i = 0; i < parsed.rows.length; i++) {
       const row = parsed.rows[i];
@@ -133,7 +131,6 @@ export async function POST(req: NextRequest) {
       const preferredTimeStr = get('preferredTime');
       const timezone = get('timezone') || 'UTC';
 
-      // Validate
       if (!companyName) {
         invalidRows.push({ rowIndex: i + 1, reason: 'Missing company name', data: row });
         continue;
@@ -143,14 +140,13 @@ export async function POST(req: NextRequest) {
         continue;
       }
 
-      // Parse preferredTime
       let preferredTime: Date;
       if (preferredTimeStr) {
-        const parsed = new Date(preferredTimeStr);
-        if (isNaN(parsed.getTime())) {
-          preferredTime = new Date(); // fallback
+        const parsedDate = new Date(preferredTimeStr);
+        if (isNaN(parsedDate.getTime())) {
+          preferredTime = new Date();
         } else {
-          preferredTime = parsed;
+          preferredTime = parsedDate;
         }
       } else {
         preferredTime = new Date();
@@ -167,21 +163,17 @@ export async function POST(req: NextRequest) {
         timezone,
       };
 
-      // Duplicate check
       const existingId = existingEmailMap.get(email);
       if (existingId) {
         duplicateRows.push({ rowIndex: i + 1, existingLeadId: existingId, data: row });
         if (duplicateMode === 'skip') {
           continue;
         }
-        // For update mode, we'll handle it in the import batch
       }
 
       validRows.push(validRow);
     }
 
-    // Perform the import — process in chunks to avoid blocking on large files.
-    // This runs as an async server action; true job-queue workers arrive in stage 3.
     const CHUNK_SIZE = 50;
     let imported = 0;
     let updated = 0;
@@ -193,67 +185,57 @@ export async function POST(req: NextRequest) {
         for (const row of chunk) {
           const existing = existingEmailMap.get(row.email);
           if (existing) {
-            await prisma.userLead.update({
-              where: { id: existing },
-              data: {
-                companyName: row.companyName,
-                services: row.services,
-                country: row.country,
-                website: row.website || null,
-                outreachDescription: row.outreachDescription,
-                preferredTime: row.preferredTime,
-                timezone: row.timezone,
-                outreachTypeId,
-                source: fileName.toLowerCase().endsWith('.xlsx') || fileName.toLowerCase().endsWith('.xls') ? 'CSV' : 'CSV',
-              },
+            await UserLead.findByIdAndUpdate(existing, {
+              companyName: row.companyName,
+              services: row.services,
+              country: row.country,
+              website: row.website || null,
+              outreachDescription: row.outreachDescription,
+              preferredTime: row.preferredTime,
+              timezone: row.timezone,
+              outreachTypeId,
+              source: 'CSV',
             });
             updated++;
           } else {
-            const newLead = await prisma.userLead.create({
-              data: {
-                userId: session.user.id,
-                companyName: row.companyName,
-                email: row.email,
-                services: row.services,
-                country: row.country,
-                website: row.website || null,
-                outreachDescription: row.outreachDescription,
-                preferredTime: row.preferredTime,
-                timezone: row.timezone,
-                outreachTypeId,
-                source: 'CSV',
-              },
+            const newLead = await UserLead.create({
+              userId: session.user.id,
+              companyName: row.companyName,
+              email: row.email,
+              services: row.services,
+              country: row.country,
+              website: row.website || null,
+              outreachDescription: row.outreachDescription,
+              preferredTime: row.preferredTime,
+              timezone: row.timezone,
+              outreachTypeId,
+              source: 'CSV',
             });
             const utcRunAt = convertToUTC(row.preferredTime, row.timezone);
-            await scheduleJob(newLead.id, session.user.id, 'send_first_email', utcRunAt);
+            await scheduleJob(newLead._id.toString(), session.user.id, 'send_first_email', utcRunAt);
             imported++;
           }
         }
       } else {
-        // Skip duplicates — only create new
         const newRows = chunk.filter((r) => !existingEmailMap.has(r.email));
-        if (newRows.length > 0) {
-          for (const r of newRows) {
-            const newLead = await prisma.userLead.create({
-              data: {
-                userId: session.user.id,
-                companyName: r.companyName,
-                email: r.email,
-                services: r.services,
-                country: r.country,
-                website: r.website || null,
-                outreachDescription: r.outreachDescription,
-                preferredTime: r.preferredTime,
-                timezone: r.timezone,
-                outreachTypeId,
-                source: 'CSV' as const,
-              },
-            });
-            const utcRunAt = convertToUTC(r.preferredTime, r.timezone);
-            await scheduleJob(newLead.id, session.user.id, 'send_first_email', utcRunAt);
-          }
-          imported += newRows.length;
+        for (const r of newRows) {
+          const newLead = await UserLead.create({
+            userId: session.user.id,
+            companyName: r.companyName,
+            email: r.email,
+            services: r.services,
+            country: r.country,
+            website: r.website || null,
+            outreachDescription: r.outreachDescription,
+            preferredTime: r.preferredTime,
+            timezone: r.timezone,
+            outreachTypeId,
+            source: 'CSV',
+          });
+          const utcRunAt = convertToUTC(r.preferredTime, r.timezone);
+          await scheduleJob(newLead._id.toString(), session.user.id, 'send_first_email', utcRunAt);
         }
+        imported += newRows.length;
       }
     }
 

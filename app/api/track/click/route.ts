@@ -1,29 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { prisma } from '@/lib/prisma';
+import { connectDB } from '@/lib/mongodb';
+import Message from '@/models/Message';
+import UserLead from '@/models/UserLead';
 
-// Click tracking redirect — wraps links in emails.
-// When the user clicks a tracked link, they hit this endpoint first,
-// we record the click, then redirect them to the real URL.
 export async function GET(req: NextRequest) {
   const messageId = req.nextUrl.searchParams.get('m');
   const targetUrl = req.nextUrl.searchParams.get('u');
 
   if (messageId) {
     try {
-      const msg = await prisma.message.findUnique({
-        where: { id: messageId },
-        select: { id: true, clickedAt: true, leadId: true },
-      });
+      await connectDB();
+      const msg = await Message.findById(messageId).select('clickedAt leadId').lean();
       if (msg && !msg.clickedAt) {
-        await prisma.message.update({
-          where: { id: messageId },
-          data: { clickedAt: new Date() },
-        });
+        await Message.findByIdAndUpdate(messageId, { clickedAt: new Date() });
         if (msg.leadId) {
-          await prisma.userLead.updateMany({
-            where: { id: msg.leadId, clickedAt: null },
-            data: { clickedAt: new Date() },
-          });
+          await UserLead.updateMany({ _id: msg.leadId, clickedAt: null }, { clickedAt: new Date() });
         }
       }
     } catch {

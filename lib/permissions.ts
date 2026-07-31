@@ -1,15 +1,10 @@
-// ---------------------------------------------------------------------------
-// Permission helpers — role-based access control for team workspaces.
-// Roles (from the User model):
-//   ADMIN:   full access including billing, team management, all leads/types
-//   MANAGER: manage all leads and outreach types, no billing/team
-//   MEMBER:  manage only their own assigned leads
-//   VIEWER:  read-only, cannot send/edit/delete
-// ---------------------------------------------------------------------------
-
 import { getServerSession } from 'next-auth';
 import { authOptions } from './auth';
-import { prisma } from './prisma';
+import { connectDB } from './mongodb';
+import User from '../models/User';
+import UserLead from '../models/UserLead';
+import ActivityLog from '../models/ActivityLog';
+
 type Role = string;
 
 export type Permission = 'view' | 'edit' | 'send' | 'delete' | 'manage_team' | 'manage_billing';
@@ -25,12 +20,19 @@ export async function getCurrentUser() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) return null;
 
-  const user = await prisma.user.findUnique({
-    where: { id: session.user.id },
-    select: { id: true, name: true, email: true, role: true, plan: true, status: true },
-  });
+  await connectDB();
+  const user = await User.findById(session.user.id).select('id name email role plan status').lean();
 
-  return user;
+  if (!user) return null;
+
+  return {
+    id: (user._id as string).toString(),
+    name: user.name,
+    email: user.email,
+    role: user.role,
+    plan: user.plan,
+    status: user.status,
+  };
 }
 
 export function hasPermission(role: Role, permission: Permission): boolean {
@@ -51,18 +53,13 @@ export async function checkPermission(permission: Permission): Promise<{
   };
 }
 
-// Check if a user can access a specific lead (owner or manager+)
 export async function canAccessLead(leadId: string, userId: string, role: Role): Promise<boolean> {
-  if (hasPermission(role, 'delete')) return true; // ADMIN or MANAGER
-  // MEMBER can only access their own leads
-  const lead = await prisma.userLead.findFirst({
-    where: { id: leadId, userId },
-    select: { id: true },
-  });
+  if (hasPermission(role, 'delete')) return true;
+  await connectDB();
+  const lead = await UserLead.findOne({ _id: leadId, userId }).select('_id').lean();
   return !!lead;
 }
 
-// Log an activity
 export async function logActivity(
   userId: string,
   action: string,
@@ -70,7 +67,6 @@ export async function logActivity(
   entityId?: string,
   details?: string,
 ): Promise<void> {
-  await prisma.activityLog.create({
-    data: { userId, action, entityType, entityId, details },
-  });
+  await connectDB();
+  await ActivityLog.create({ userId, action, entityType, entityId, details });
 }

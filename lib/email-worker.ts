@@ -1,5 +1,12 @@
-import { prisma } from './prisma';
-import { Inbox } from '@prisma/client';
+import { connectDB } from './mongodb';
+import Job from '../models/Job';
+import User from '../models/User';
+import UserLead from '../models/UserLead';
+import OutreachType from '../models/OutreachType';
+import Conversation from '../models/Conversation';
+import Message from '../models/Message';
+import Notification from '../models/Notification';
+import Inbox from '../models/Inbox';
 import {
   markJobRunning,
   markJobCompleted,
@@ -17,42 +24,39 @@ import { createTrackedHtmlBody } from './email-tracking';
 import { handleReplyAction } from './reply-handler';
 
 const MAX_ATTEMPTS = 3;
-const BACKOFF_BASE_MS = 5 * 60 * 1000; // 5 minutes
+const BACKOFF_BASE_MS = 5 * 60 * 1000;
 
 export async function processJob(jobId: string): Promise<boolean> {
   const acquired = await markJobRunning(jobId);
   if (!acquired) return false;
 
-  const job = await prisma.job.findUnique({
-    where: { id: jobId },
-    include: { lead: { include: { outreachType: true } } },
-  });
+  const job = await Job.findById(jobId).lean();
 
-  if (!job || !job.lead) {
+  if (!job) {
     await markJobFailed(jobId);
     return true;
   }
 
-  const lead = job.lead;
+  const lead = await UserLead.findById(job.leadId).populate('outreachTypeId').lean();
+
+  if (!lead) {
+    await markJobFailed(jobId);
+    return true;
+  }
 
   if (lead.status === 'BOUNCED' || lead.status === 'UNSUBSCRIBED' || lead.status === 'NOT_INTERESTED') {
-    await cancelJobsForLead(lead.id);
+    await cancelJobsForLead(lead._id.toString());
     await markJobCompleted(jobId);
     return true;
   }
 
-  // Re-check aiEnabled immediately before every send (not only at schedule time).
-  // This catches the case where Stop AI was clicked while a message was mid-generation.
-  if (!lead.aiEnabled || !lead.outreachType) {
+  const outreachType = lead.outreachTypeId as any;
+  if (!lead.aiEnabled || !outreachType) {
     await markJobCompleted(jobId);
     return true;
   }
 
-  // Check global AI pause
-  const user = await prisma.user.findUnique({
-    where: { id: job.userId },
-    select: { aiPaused: true },
-  });
+  const user = await User.findById(job.userId).select('aiPaused').lean();
   if (user?.aiPaused) {
     await markJobCompleted(jobId);
     return true;
@@ -65,7 +69,7 @@ export async function processJob(jobId: string): Promise<boolean> {
     return false;
   }
 
-  const inbox = await getInboxForUser(job.userId);
+  const inbox = await getInboxForUser(job.userId.toString());
   if (!inbox) {
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
@@ -75,75 +79,64 @@ export async function processJob(jobId: string): Promise<boolean> {
   }
 
   const stepNumber = lead.currentStep + 1;
-  const sequenceSteps = lead.outreachType.sequenceSteps as { stepNumber: number; delayDays: number }[];
+  const sequenceSteps = outreachType.sequenceSteps as { stepNumber: number; delayDays: number }[];
 
-  // Idempotency check: has this exact step already been sent?
-  const alreadySent = await prisma.message.findFirst({
-    where: { leadId: lead.id, step: stepNumber, status: 'SENT' },
-  });
+  const alreadySent = await Message.findOne({ leadId: lead._id, step: stepNumber, status: 'SENT' });
   if (alreadySent) {
     await markJobCompleted(jobId);
     return true;
   }
 
-  // Generate personalized email content using AI.
   let emailSubject: string;
   let emailBody: string;
   try {
     const aiContent = await generateOutreachMessage(
-      lead.id,
-      job.userId,
-      lead.outreachType.id,
+      lead._id.toString(),
+      job.userId.toString(),
+      outreachType._id.toString(),
       stepNumber,
     );
     emailSubject = aiContent.subject;
     emailBody = aiContent.body;
   } catch (aiError) {
-    // If AI generation fails, fall back to the first example email.
-    const exampleEmails = lead.outreachType.exampleEmails as string[];
+    const exampleEmails = outreachType.exampleEmails as string[];
     emailBody = exampleEmails[0] || 'Hello, this is a test outreach email.';
     emailSubject = `Outreach to ${lead.companyName}`;
   }
 
-  // Re-check aiEnabled again right before sending (Stop AI may have been clicked during generation)
-  const freshLead = await prisma.userLead.findUnique({
-    where: { id: lead.id },
-    select: { aiEnabled: true },
-  });
+  const freshLead = await UserLead.findById(lead._id).select('aiEnabled').lean();
   if (!freshLead?.aiEnabled) {
     await markJobCompleted(jobId);
     return true;
   }
 
-  // Ensure conversation exists
-    let conversationId = lead.conversationId;
-    if (!conversationId) {
-      const conv = await prisma.conversation.create({
-        data: { leadId: lead.id, userId: job.userId, status: 'ACTIVE', lastActivity: new Date() },
-      });
-      conversationId = conv.id;
-      await prisma.userLead.update({ where: { id: lead.id }, data: { conversationId } });
-    }
-
-    // Create the message record FIRST so we have an ID for tracking
-    const message = await prisma.message.create({
-      data: {
-        conversationId,
-        leadId: lead.id,
-        userId: job.userId,
-        role: 'ASSISTANT',
-        content: emailBody,
-        subject: emailSubject,
-        step: stepNumber,
-        aiGenerated: true,
-        status: 'SENT',
-      },
+  let conversationId = lead.conversationId;
+  if (!conversationId) {
+    const conv = await Conversation.create({
+      leadId: lead._id,
+      userId: job.userId,
+      status: 'ACTIVE',
+      lastActivity: new Date(),
     });
+    conversationId = conv._id;
+    await UserLead.findByIdAndUpdate(lead._id, { conversationId });
+  }
 
-    // Add open/click tracking to the email body
-    const htmlBody = createTrackedHtmlBody(emailBody, message.id);
+  const message = await Message.create({
+    conversationId,
+    leadId: lead._id,
+    userId: job.userId,
+    role: 'ASSISTANT',
+    content: emailBody,
+    subject: emailSubject,
+    step: stepNumber,
+    aiGenerated: true,
+    status: 'SENT',
+  });
 
-    try {
+  const htmlBody = createTrackedHtmlBody(emailBody, (message._id as string).toString());
+
+  try {
     const result = await sendEmail(inbox, {
       to: lead.email,
       from: inbox.emailAddress,
@@ -152,47 +145,51 @@ export async function processJob(jobId: string): Promise<boolean> {
       html: htmlBody,
     });
 
-    await prisma.message.update({
-      where: { id: message.id },
-      data: { providerMessageId: result.providerMessageId, threadId: result.threadId },
+    await Message.findByIdAndUpdate(message._id, {
+      providerMessageId: result.providerMessageId,
+      threadId: result.threadId,
     });
 
-    await prisma.userLead.update({
-      where: { id: lead.id },
-      data: { currentStep: stepNumber, lastMessageDate: new Date(), status: 'IN_PROGRESS' },
+    await UserLead.findByIdAndUpdate(lead._id, {
+      currentStep: stepNumber,
+      lastMessageDate: new Date(),
+      status: 'IN_PROGRESS',
     });
 
-    await incrementInboxSentCount(inbox.id);
+    await incrementInboxSentCount(inbox._id.toString());
 
-    // Schedule next follow-up step
     const nextStep = sequenceSteps.find((s) => s.stepNumber === stepNumber + 1);
     if (nextStep) {
       const nextRunAt = new Date();
       nextRunAt.setDate(nextRunAt.getDate() + nextStep.delayDays);
-      await prisma.job.create({
-        data: { leadId: lead.id, userId: job.userId, type: 'send_followup', runAt: nextRunAt, status: 'SCHEDULED' },
+      await Job.create({
+        leadId: lead._id,
+        userId: job.userId,
+        type: 'send_followup',
+        runAt: nextRunAt,
+        status: 'SCHEDULED',
       });
-      await prisma.userLead.update({ where: { id: lead.id }, data: { nextMessageDate: nextRunAt } });
+      await UserLead.findByIdAndUpdate(lead._id, { nextMessageDate: nextRunAt });
     } else {
-      await prisma.userLead.update({ where: { id: lead.id }, data: { nextMessageDate: null } });
+      await UserLead.findByIdAndUpdate(lead._id, { nextMessageDate: null });
     }
 
     await markJobCompleted(jobId);
     return true;
   } catch (error) {
     if (error instanceof BounceError) {
-      await prisma.userLead.update({ where: { id: lead.id }, data: { status: 'BOUNCED' } });
-      await cancelJobsForLead(lead.id);
+      await UserLead.findByIdAndUpdate(lead._id, { status: 'BOUNCED' });
+      await cancelJobsForLead(lead._id.toString());
       await markJobCompleted(jobId);
-      await createNotification(job.userId, 'bounce', `Email to ${lead.email} bounced. Lead marked as bounced.`, lead.id);
+      await createNotification(job.userId.toString(), 'bounce', `Email to ${lead.email} bounced. Lead marked as bounced.`, lead._id.toString());
       return true;
     }
 
     if (error instanceof AuthError) {
-      await prisma.inbox.update({ where: { id: inbox.id }, data: { status: 'EXPIRED' } });
-      await cancelJobsForLead(lead.id);
+      await Inbox.findByIdAndUpdate(inbox._id, { status: 'EXPIRED' });
+      await cancelJobsForLead(lead._id.toString());
       await markJobFailed(jobId);
-      await createNotification(job.userId, 'inbox_expired', `Inbox ${inbox.emailAddress} has expired. Please reconnect it in Settings.`, lead.id);
+      await createNotification(job.userId.toString(), 'inbox_expired', `Inbox ${inbox.emailAddress} has expired. Please reconnect it in Settings.`, lead._id.toString());
       return true;
     }
 
@@ -201,14 +198,14 @@ export async function processJob(jobId: string): Promise<boolean> {
       const backoff = BACKOFF_BASE_MS * Math.pow(2, attempts - 1);
       await requeueJob(jobId, new Date(Date.now() + backoff));
     } else {
-      await createNotification(job.userId, 'send_failed', `Failed to send email to ${lead.email} after ${MAX_ATTEMPTS} attempts.`, lead.id);
+      await createNotification(job.userId.toString(), 'send_failed', `Failed to send email to ${lead.email} after ${MAX_ATTEMPTS} attempts.`, lead._id.toString());
     }
     return true;
   }
 }
 
 async function createNotification(userId: string, type: string, message: string, leadId: string) {
-  await prisma.notification.create({ data: { userId, type, message, leadId } });
+  await Notification.create({ userId, type, message, leadId });
 }
 
 export async function processDueJobs(limit = 50): Promise<{ processed: number; skipped: number }> {
@@ -229,11 +226,6 @@ export async function processDueJobs(limit = 50): Promise<{ processed: number; s
   return { processed, skipped };
 }
 
-// ---------------------------------------------------------------------------
-// Reply processing — called by webhook handlers and the backup poller.
-// Matches a reply to a conversation by threadId, saves it, and triggers AI.
-// ---------------------------------------------------------------------------
-
 export async function processIncomingReply(
   inboxId: string,
   threadId: string | null,
@@ -242,69 +234,36 @@ export async function processIncomingReply(
   body: string,
   providerMessageId?: string,
 ): Promise<void> {
-  // Match by threadId first (not sender email address — a colleague may reply)
-  let conversation = threadId
-    ? await prisma.conversation.findFirst({
-        where: {
-          messages: { some: { threadId } },
-        },
-        include: { lead: true },
-      })
-    : null;
+  await connectDB();
 
-  // Fallback: match by lead email if no threadId match
-  if (!conversation) {
-    const lead = await prisma.userLead.findFirst({
-      where: { email: senderEmail.toLowerCase() },
-      include: { conversation: true },
-    });
-    if (lead?.conversation) {
-      conversation = lead.conversation as typeof conversation;
+  let conversation: any = null;
+
+  if (threadId) {
+    const msg = await Message.findOne({ threadId }).lean();
+    if (msg) {
+      conversation = await Conversation.findById(msg.conversationId).populate('leadId').lean();
     }
   }
 
   if (!conversation) {
-    // No matching conversation — log and ignore
+    const lead = await UserLead.findOne({ email: senderEmail.toLowerCase() }).populate('conversationId').lean();
+    if (lead?.conversationId) {
+      conversation = lead.conversationId as any;
+      conversation.lead = lead;
+    }
+  }
+
+  if (!conversation) {
     return;
   }
 
-  const lead = conversation.lead;
+  const lead = conversation.leadId || conversation.lead;
+  if (!lead) return;
 
-  // Detect auto-replies / out-of-office
   if (isAutoReply(subject, body)) {
-    await prisma.message.create({
-      data: {
-        conversationId: conversation.id,
-        leadId: lead.id,
-        userId: conversation.userId,
-        role: 'CUSTOMER',
-        content: body,
-        subject,
-        senderEmail,
-        providerMessageId,
-        threadId: threadId || undefined,
-        status: 'SENT',
-        aiGenerated: false,
-      },
-    });
-    await prisma.userLead.update({
-      where: { id: lead.id },
-      data: { replyTag: 'OUT_OF_OFFICE' },
-    });
-    await createNotification(
-      conversation.userId,
-      'auto_reply',
-      `Auto-reply from ${lead.companyName}: ${subject}`,
-      lead.id,
-    );
-    return;
-  }
-
-  // Save the genuine reply
-  await prisma.message.create({
-    data: {
-      conversationId: conversation.id,
-      leadId: lead.id,
+    await Message.create({
+      conversationId: conversation._id,
+      leadId: lead._id,
       userId: conversation.userId,
       role: 'CUSTOMER',
       content: body,
@@ -314,46 +273,58 @@ export async function processIncomingReply(
       threadId: threadId || undefined,
       status: 'SENT',
       aiGenerated: false,
-    },
+    });
+    await UserLead.findByIdAndUpdate(lead._id, { replyTag: 'OUT_OF_OFFICE' });
+    await createNotification(
+      conversation.userId.toString(),
+      'auto_reply',
+      `Auto-reply from ${lead.companyName}: ${subject}`,
+      lead._id.toString(),
+    );
+    return;
+  }
+
+  await Message.create({
+    conversationId: conversation._id,
+    leadId: lead._id,
+    userId: conversation.userId,
+    role: 'CUSTOMER',
+    content: body,
+    subject,
+    senderEmail,
+    providerMessageId,
+    threadId: threadId || undefined,
+    status: 'SENT',
+    aiGenerated: false,
   });
 
-  await prisma.conversation.update({
-    where: { id: conversation.id },
-    data: { lastActivity: new Date() },
+  await Conversation.findByIdAndUpdate(conversation._id, { lastActivity: new Date() });
+
+  await UserLead.findByIdAndUpdate(lead._id, {
+    status: 'REPLIED',
+    lastMessageDate: new Date(),
   });
 
-  await prisma.userLead.update({
-    where: { id: lead.id },
-    data: { status: 'REPLIED', lastMessageDate: new Date() },
-  });
-
-  // Create notification immediately
   await createNotification(
-    conversation.userId,
+    conversation.userId.toString(),
     'reply',
     `New reply from ${lead.companyName}: ${subject}`,
-    lead.id,
+    lead._id.toString(),
   );
 
-  // If AI is enabled, trigger AI worker immediately
   if (lead.aiEnabled) {
-    // Check global pause
-    const user = await prisma.user.findUnique({
-      where: { id: conversation.userId },
-      select: { aiPaused: true },
-    });
+    const user = await User.findById(conversation.userId).select('aiPaused').lean();
     if (user?.aiPaused) return;
 
     try {
-      const decision = await decideReplyAction(lead.id, conversation.userId, body);
-      await handleReplyAction(lead.id, conversation.userId, conversation.id, decision);
+      const decision = await decideReplyAction(lead._id.toString(), conversation.userId.toString(), body);
+      await handleReplyAction(lead._id.toString(), conversation.userId.toString(), conversation._id.toString(), decision);
     } catch {
-      // AI decision failed — log but don't crash
       await createNotification(
-        conversation.userId,
+        conversation.userId.toString(),
         'ai_error',
         `AI failed to process reply from ${lead.companyName}. Manual review needed.`,
-        lead.id,
+        lead._id.toString(),
       );
     }
   }

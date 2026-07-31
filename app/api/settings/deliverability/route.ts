@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
+import { connectDB } from '@/lib/mongodb';
+import Inbox from '@/models/Inbox';
 import { checkDomainHealth } from '@/lib/dns-check';
 
 // Get deliverability data: DNS health per sending domain + per-inbox health
@@ -12,19 +13,10 @@ export async function GET() {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const inboxes = await prisma.inbox.findMany({
-      where: { userId: session.user.id },
-      select: {
-        id: true,
-        emailAddress: true,
-        provider: true,
-        status: true,
-        dailySendingCap: true,
-        warmupThrottle: true,
-        sentToday: true,
-        sentDate: true,
-      },
-    });
+    await connectDB();
+    const inboxes = await Inbox.find({ userId: session.user.id })
+      .select('emailAddress provider status dailySendingCap warmupThrottle sentToday sentDate')
+      .lean();
 
     // Extract unique sending domains
     const domains = [...new Set(

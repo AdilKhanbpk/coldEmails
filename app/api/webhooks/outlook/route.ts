@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { processIncomingReply } from '@/lib/email-worker';
-import { prisma } from '@/lib/prisma';
+import { connectDB } from '@/lib/mongodb';
+import Inbox from '@/models/Inbox';
 
 // ---------------------------------------------------------------------------
 // Microsoft Graph webhook (change notifications).
@@ -33,8 +34,9 @@ export async function POST(req: NextRequest) {
       const messageId = resourceData.id;
 
       // Find inbox by clientState (we store email there during subscription)
+      await connectDB();
       const inbox = emailAddress
-        ? await prisma.inbox.findFirst({ where: { emailAddress, status: 'CONNECTED' } })
+        ? await Inbox.findOne({ emailAddress, status: 'CONNECTED' }).lean()
         : null;
 
       if (!inbox) continue;

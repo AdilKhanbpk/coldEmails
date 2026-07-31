@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
+import { connectDB } from '@/lib/mongodb';
+import Message from '@/models/Message';
+import UserLead from '@/models/UserLead';
+import OutreachType from '@/models/OutreachType';
+import Meeting from '@/models/Meeting';
+import mongoose from 'mongoose';
 
-// Analytics API — computes metrics from Messages, UserLeads, and Meetings.
 export async function GET(req: NextRequest) {
   try {
     const session = await getServerSession(authOptions);
@@ -11,32 +15,33 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    await connectDB();
+
     const { searchParams } = new URL(req.url);
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
     const outreachTypeId = searchParams.get('outreachTypeId');
 
-    const where: Record<string, unknown> = { userId: session.user.id };
+    const userId = new mongoose.Types.ObjectId(session.user.id);
+
+    const leadFilter: Record<string, unknown> = { userId };
     if (outreachTypeId && outreachTypeId !== 'all') {
-      where.outreachTypeId = outreachTypeId;
-    }
-    const dateRange: Record<string, Date> = {};
-    if (startDate) dateRange.gte = new Date(startDate);
-    if (endDate) {
-      const ed = new Date(endDate);
-      ed.setHours(23, 59, 59, 999);
-      dateRange.lte = ed;
+      leadFilter.outreachTypeId = new mongoose.Types.ObjectId(outreachTypeId);
     }
 
-    const messageWhere: Record<string, unknown> = { userId: session.user.id };
-    if (Object.keys(dateRange).length > 0) {
-      messageWhere.createdAt = dateRange;
+    const messageFilter: Record<string, unknown> = { userId, role: 'ASSISTANT' };
+    if (startDate || endDate) {
+      const dateRange: Record<string, Date> = {};
+      if (startDate) dateRange.$gte = new Date(startDate);
+      if (endDate) {
+        const ed = new Date(endDate);
+        ed.setHours(23, 59, 59, 999);
+        dateRange.$lte = ed;
+      }
+      messageFilter.createdAt = dateRange;
     }
 
-    const leadWhere: Record<string, unknown> = { userId: session.user.id };
-    if (outreachTypeId && outreachTypeId !== 'all') {
-      leadWhere.outreachTypeId = outreachTypeId;
-    }
+    const repliedStatuses = ['REPLIED', 'MEETING_BOOKED', 'COMPLETED', 'NOT_INTERESTED'];
 
     const [
       totalSent,
@@ -47,13 +52,13 @@ export async function GET(req: NextRequest) {
       totalMeetings,
       totalLeads,
     ] = await Promise.all([
-      prisma.message.count({ where: { ...messageWhere, role: 'ASSISTANT' } }),
-      prisma.message.count({ where: { ...messageWhere, role: 'ASSISTANT', openedAt: { not: null } } }),
-      prisma.message.count({ where: { ...messageWhere, role: 'ASSISTANT', clickedAt: { not: null } } }),
-      prisma.userLead.count({ where: { ...leadWhere, status: { in: ['REPLIED', 'MEETING_BOOKED', 'COMPLETED', 'NOT_INTERESTED'] } } }),
-      prisma.userLead.count({ where: { ...leadWhere, status: 'BOUNCED' } }),
-      prisma.meeting.count({ where: { userId: session.user.id, status: 'CONFIRMED' } }),
-      prisma.userLead.count({ where: leadWhere }),
+      Message.countDocuments(messageFilter),
+      Message.countDocuments({ ...messageFilter, openedAt: { $ne: null } }),
+      Message.countDocuments({ ...messageFilter, clickedAt: { $ne: null } }),
+      UserLead.countDocuments({ ...leadFilter, status: { $in: repliedStatuses } }),
+      UserLead.countDocuments({ ...leadFilter, status: 'BOUNCED' }),
+      Meeting.countDocuments({ userId, status: 'CONFIRMED' }),
+      UserLead.countDocuments(leadFilter),
     ]);
 
     const openRate = totalSent > 0 ? (totalOpened / totalSent) * 100 : 0;
@@ -61,7 +66,6 @@ export async function GET(req: NextRequest) {
     const replyRate = totalSent > 0 ? (totalReplied / totalSent) * 100 : 0;
     const bounceRate = totalLeads > 0 ? (totalBounced / totalLeads) * 100 : 0;
 
-    // Sends over time (last 30 days by default)
     const days = 30;
     const sendsData: { date: string; sends: number; opens: number; replies: number }[] = [];
     const now = new Date();
@@ -72,31 +76,24 @@ export async function GET(req: NextRequest) {
       const nextDay = new Date(day);
       nextDay.setDate(day.getDate() + 1);
 
+      const dayMessageFilter: Record<string, unknown> = {
+        userId,
+        role: 'ASSISTANT',
+        createdAt: { $gte: day, $lt: nextDay },
+      };
+      const dayLeadFilter: Record<string, unknown> = {
+        userId,
+        lastMessageDate: { $gte: day, $lt: nextDay },
+        status: { $in: repliedStatuses },
+      };
+      if (outreachTypeId && outreachTypeId !== 'all') {
+        dayLeadFilter.outreachTypeId = new mongoose.Types.ObjectId(outreachTypeId);
+      }
+
       const [sends, opens, replies] = await Promise.all([
-        prisma.message.count({
-          where: {
-            userId: session.user.id,
-            role: 'ASSISTANT',
-            createdAt: { gte: day, lt: nextDay },
-            ...(outreachTypeId && outreachTypeId !== 'all' ? { lead: { outreachTypeId } } : {}),
-          },
-        }),
-        prisma.message.count({
-          where: {
-            userId: session.user.id,
-            role: 'ASSISTANT',
-            openedAt: { gte: day, lt: nextDay },
-            ...(outreachTypeId && outreachTypeId !== 'all' ? { lead: { outreachTypeId } } : {}),
-          },
-        }),
-        prisma.userLead.count({
-          where: {
-            userId: session.user.id,
-            lastMessageDate: { gte: day, lt: nextDay },
-            status: { in: ['REPLIED', 'MEETING_BOOKED', 'COMPLETED', 'NOT_INTERESTED'] },
-            ...(outreachTypeId && outreachTypeId !== 'all' ? { outreachTypeId } : {}),
-          },
-        }),
+        Message.countDocuments(dayMessageFilter),
+        Message.countDocuments({ ...dayMessageFilter, openedAt: { $gte: day, $lt: nextDay } }),
+        UserLead.countDocuments(dayLeadFilter),
       ]);
 
       sendsData.push({
@@ -107,25 +104,14 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Reply rate by Outreach Type
-    const outreachTypes = await prisma.outreachType.findMany({
-      where: { userId: session.user.id },
-      select: { id: true, name: true },
-    });
+    const outreachTypes = await OutreachType.find({ userId }).select('name').lean();
 
     const replyByType: { name: string; replyRate: number; total: number; replied: number }[] = [];
     for (const ot of outreachTypes) {
+      const otId = ot._id as mongoose.Types.ObjectId;
       const [sent, replied] = await Promise.all([
-        prisma.message.count({
-          where: { userId: session.user.id, role: 'ASSISTANT', lead: { outreachTypeId: ot.id } },
-        }),
-        prisma.userLead.count({
-          where: {
-            userId: session.user.id,
-            outreachTypeId: ot.id,
-            status: { in: ['REPLIED', 'MEETING_BOOKED', 'COMPLETED', 'NOT_INTERESTED'] },
-          },
-        }),
+        Message.countDocuments({ userId, role: 'ASSISTANT', leadId: { $in: await UserLead.find({ outreachTypeId: otId }).distinct('_id') } }),
+        UserLead.countDocuments({ userId, outreachTypeId: otId, status: { $in: repliedStatuses } }),
       ]);
       replyByType.push({
         name: ot.name,
@@ -135,7 +121,6 @@ export async function GET(req: NextRequest) {
       });
     }
 
-    // Funnel
     const funnel = {
       sent: totalSent,
       opened: totalOpened,

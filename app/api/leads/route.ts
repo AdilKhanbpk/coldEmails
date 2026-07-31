@@ -1,14 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
-const VALID_STATUSES = ['NOT_STARTED', 'IN_PROGRESS', 'REPLIED', 'MEETING_BOOKED', 'COMPLETED', 'BOUNCED', 'UNSUBSCRIBED', 'NOT_INTERESTED'];
-const VALID_SOURCES = ['MANUAL', 'CSV', 'API', 'ZOOMINFO', 'APOLLO'];
+import { connectDB } from '@/lib/mongodb';
+import UserLead from '@/models/UserLead';
+import User from '@/models/User';
+import OutreachType from '@/models/OutreachType';
 import { scheduleJob, convertToUTC } from '@/lib/scheduler';
 import { canAddLead } from '@/lib/plan-limits';
 
-const VALID_STATUSES = Object.values(LeadStatus);
-const VALID_SOURCES = Object.values(LeadSource);
+const VALID_STATUSES = ['NOT_STARTED', 'IN_PROGRESS', 'REPLIED', 'MEETING_BOOKED', 'COMPLETED', 'BOUNCED', 'UNSUBSCRIBED', 'NOT_INTERESTED'];
+const VALID_SOURCES = ['MANUAL', 'CSV', 'API', 'ZOOMINFO', 'APOLLO'];
 
 export async function GET(req: NextRequest) {
   try {
@@ -17,11 +18,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    await connectDB();
+
     const { searchParams } = new URL(req.url);
     const page = parseInt(searchParams.get('page') || '1');
     const pageSize = Math.min(parseInt(searchParams.get('pageSize') || '20'), 100);
     const sortBy = searchParams.get('sortBy') || 'createdAt';
-    const sortOrder = searchParams.get('sortOrder') === 'asc' ? 'asc' : 'desc';
+    const sortOrder = searchParams.get('sortOrder') === 'asc' ? 1 : -1;
     const statusFilter = searchParams.get('status') || '';
     const outreachTypeFilter = searchParams.get('outreachTypeId') || '';
     const countryFilter = searchParams.get('country') || '';
@@ -35,7 +38,7 @@ export async function GET(req: NextRequest) {
       where.outreachTypeId = outreachTypeFilter;
     }
     if (countryFilter) {
-      where.country = { contains: countryFilter, mode: 'insensitive' };
+      where.country = { $regex: countryFilter, $options: 'i' };
     }
     if (sourceFilter && VALID_SOURCES.includes(sourceFilter)) {
       where.source = sourceFilter;
@@ -45,20 +48,23 @@ export async function GET(req: NextRequest) {
     const sortField = validSortFields.includes(sortBy) ? sortBy : 'createdAt';
 
     const [leads, total] = await Promise.all([
-      prisma.userLead.findMany({
-        where,
-        include: {
-          outreachType: { select: { id: true, name: true } },
-        },
-        orderBy: { [sortField]: sortOrder },
-        skip: (page - 1) * pageSize,
-        take: pageSize,
-      }),
-      prisma.userLead.count({ where }),
+      UserLead.find(where)
+        .populate({ path: 'outreachTypeId', select: 'name' })
+        .sort({ [sortField]: sortOrder })
+        .skip((page - 1) * pageSize)
+        .limit(pageSize)
+        .lean(),
+      UserLead.countDocuments(where),
     ]);
 
+    const formatted = leads.map((l: any) => ({
+      ...l,
+      id: l._id.toString(),
+      outreachType: l.outreachTypeId ? { id: l.outreachTypeId._id.toString(), name: l.outreachTypeId.name } : null,
+    }));
+
     return NextResponse.json({
-      leads,
+      leads: formatted,
       pagination: {
         page,
         pageSize,
@@ -108,11 +114,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ field: 'email', error: 'A valid email is required.' }, { status: 400 });
     }
 
-    // Enforce plan limits server-side
-    const user = await prisma.user.findUnique({
-      where: { id: session.user.id },
-      select: { plan: true },
-    });
+    await connectDB();
+
+    const user = await User.findById(session.user.id).select('plan').lean();
     if (user) {
       const leadCheck = await canAddLead(session.user.id, user.plan);
       if (!leadCheck.allowed) {
@@ -138,46 +142,43 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ field: 'outreachTypeId', error: 'An outreach type is required.' }, { status: 400 });
     }
 
-    // Verify the outreach type belongs to the user and is active.
-    const outreachType = await prisma.outreachType.findFirst({
-      where: { id: outreachTypeId, userId: session.user.id, active: true },
-    });
+    const outreachType = await OutreachType.findOne({
+      _id: outreachTypeId,
+      userId: session.user.id,
+      active: true,
+    }).lean();
     if (!outreachType) {
       return NextResponse.json({ field: 'outreachTypeId', error: 'Selected outreach type is not available.' }, { status: 400 });
     }
 
-    // Duplicate check (email + userId)
-    const existing = await prisma.userLead.findFirst({
-      where: { email: email.trim().toLowerCase(), userId: session.user.id },
-    });
+    const existing = await UserLead.findOne({
+      email: email.trim().toLowerCase(),
+      userId: session.user.id,
+    }).lean();
     if (existing) {
       return NextResponse.json({ field: 'email', error: 'A lead with this email already exists.' }, { status: 409 });
     }
 
-    const lead = await prisma.userLead.create({
-      data: {
-        userId: session.user.id,
-        companyName: companyName.trim(),
-        email: email.trim().toLowerCase(),
-        services: services || [],
-        country: country.trim(),
-        website: website?.trim() || null,
-        outreachTypeId,
-        outreachDescription: outreachDescription.trim(),
-        preferredTime: new Date(preferredTime),
-        timezone: timezone.trim(),
-        source: 'MANUAL',
-      },
+    const lead = await UserLead.create({
+      userId: session.user.id,
+      companyName: companyName.trim(),
+      email: email.trim().toLowerCase(),
+      services: services || [],
+      country: country.trim(),
+      website: website?.trim() || null,
+      outreachTypeId,
+      outreachDescription: outreachDescription.trim(),
+      preferredTime: new Date(preferredTime),
+      timezone: timezone.trim(),
+      source: 'MANUAL',
     });
 
-    // Auto-schedule the first email job if AI is enabled and the lead has an outreach type.
-    // CRITICAL: convert preferredTime to UTC using the LEAD'S timezone, never the server's.
     if (lead.aiEnabled && lead.outreachTypeId) {
       const utcRunAt = convertToUTC(new Date(preferredTime), timezone.trim());
-      await scheduleJob(lead.id, session.user.id, 'send_first_email', utcRunAt);
+      await scheduleJob(lead._id.toString(), session.user.id, 'send_first_email', utcRunAt);
     }
 
-    return NextResponse.json(lead, { status: 201 });
+    return NextResponse.json({ ...lead.toObject(), id: lead._id.toString() }, { status: 201 });
   } catch {
     return NextResponse.json({ error: 'Failed to create lead.' }, { status: 500 });
   }

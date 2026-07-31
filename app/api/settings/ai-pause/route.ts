@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
-import { prisma } from '@/lib/prisma';
+import { connectDB } from '@/lib/mongodb';
+import User from '@/models/User';
 
 // Toggle global AI pause for the current user.
 // When aiPaused=true, the worker skips all AI generation/sending for this user.
@@ -19,10 +20,8 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: 'aiPaused boolean is required.' }, { status: 400 });
     }
 
-    await prisma.user.update({
-      where: { id: session.user.id },
-      data: { aiPaused },
-    });
+    await connectDB();
+    await User.findByIdAndUpdate(session.user.id, { aiPaused });
 
     return NextResponse.json({ success: true, aiPaused });
   } catch {
