@@ -19,7 +19,33 @@ const config: Config = {
         md: 'calc(var(--radius) - 2px)',
         sm: 'calc(var(--radius) - 4px)',
       },
+      fontFamily: {
+        serif: ['var(--font-serif)', 'Georgia', 'serif'],
+        sans: ['var(--font-sans)', 'system-ui', 'sans-serif'],
+      },
       colors: {
+        cream: {
+          50: '#FAF8F3',
+          100: '#F5F3EE',
+          200: '#EFEAE0',
+          300: '#E5DFD2',
+          400: '#D8D0BF',
+        },
+        clay: {
+          50: '#FBF4F0',
+          100: '#F5E3D9',
+          200: '#EFC9B5',
+          300: '#E5A882',
+          400: '#D97757',
+          500: '#C25E3D',
+          600: '#A84A30',
+          700: '#8A3A24',
+        },
+        ink: {
+          DEFAULT: '#1F1E1D',
+          soft: '#3A3835',
+          muted: '#6B665F',
+        },
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',
         card: {
