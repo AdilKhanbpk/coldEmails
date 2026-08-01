@@ -18,11 +18,12 @@
 
 import type { BaseChatModel } from '@langchain/core/language_models/chat_models';
 
-export type LLMProvider = 'openai' | 'anthropic';
+export type LLMProvider = 'openai' | 'anthropic' | 'nvidia';
 
 function getProvider(): LLMProvider {
   const raw = (process.env.LLM_PROVIDER || 'openai').toLowerCase().trim();
   if (raw === 'anthropic') return 'anthropic';
+  if (raw === 'nvidia') return 'nvidia';
   return 'openai';
 }
 
@@ -39,6 +40,23 @@ export function getChatModel(): BaseChatModel {
       return new ChatAnthropic({
         anthropicApiKey: process.env.ANTHROPIC_API_KEY,
         model: 'claude-3-5-sonnet-20241022',
+        temperature: 0.7,
+        maxTokens: 800,
+      });
+    }
+    case 'nvidia': {
+      // To switch to Nvidia NIM via OpenAI-compatible endpoint, set:
+      //   LLM_PROVIDER=nvidia
+      //   NVIDIA_API_KEY=nvapi-...
+      //   NVIDIA_MODEL=meta/llama-3.1-8b-instruct (optional)
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const { ChatOpenAI } = require('@langchain/openai');
+      return new ChatOpenAI({
+        openAIApiKey: process.env.NVIDIA_API_KEY,
+        configuration: {
+          baseURL: 'https://integrate.api.nvidia.com/v1',
+        },
+        model: process.env.NVIDIA_MODEL || 'meta/llama-3.1-8b-instruct',
         temperature: 0.7,
         maxTokens: 800,
       });

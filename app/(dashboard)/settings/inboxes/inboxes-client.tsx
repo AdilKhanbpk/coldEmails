@@ -14,6 +14,7 @@ import { Mail, Trash2, Loader2, CheckCircle2, AlertTriangle, Settings2 } from 'l
 import { toast } from 'sonner';
 import { Skeleton } from '@/components/skeletons';
 import { ConfirmDialog } from '@/components/confirm-dialog';
+import { useRouter } from 'next/navigation';
 
 interface Inbox {
   id: string;
@@ -52,6 +53,15 @@ export function InboxesClient() {
   const [savingSettings, setSavingSettings] = useState(false);
 
   const [disconnectTarget, setDisconnectTarget] = useState<Inbox | null>(null);
+  const router = useRouter();
+
+  const handleConnectGmail = () => {
+    window.location.href = '/api/oauth/google';
+  };
+
+  const handleConnectOutlook = () => {
+    window.location.href = '/api/oauth/microsoft';
+  };
 
   const fetchInboxes = useCallback(async () => {
     setLoading(true);
@@ -67,7 +77,21 @@ export function InboxesClient() {
     }
   }, []);
 
-  useEffect(() => { fetchInboxes(); }, [fetchInboxes]);
+  useEffect(() => {
+    fetchInboxes();
+
+    // Check for success/error redirect parameters from custom OAuth backend
+    const params = new URLSearchParams(window.location.search);
+    const success = params.get('success');
+    const error = params.get('error');
+    if (success) {
+      toast.success('Inbox connected successfully.');
+      router.replace('/settings/inboxes');
+    } else if (error) {
+      toast.error(`Connection failed: ${error}`);
+      router.replace('/settings/inboxes');
+    }
+  }, [fetchInboxes, router]);
 
   const handleTestSMTP = async () => {
     setTesting(true);
@@ -142,7 +166,7 @@ export function InboxesClient() {
   if (loading) {
     return (
       <div className="space-y-3">
-        {[1,2,3].map((i) => (
+        {[1, 2, 3].map((i) => (
           <div key={i} className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
             <div className="flex items-center gap-4">
               <Skeleton className="h-10 w-10 rounded-lg" />
@@ -161,12 +185,12 @@ export function InboxesClient() {
     <>
       <div className="mb-6 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Button variant="outline" className="h-auto flex-col items-start gap-1 border-gray-200 bg-white py-4"
-          onClick={() => toast.info('Gmail OAuth requires configuring GOOGLE_CLIENT_ID. Once configured, this button will initiate the OAuth flow with Gmail send scopes.')}>
+          onClick={handleConnectGmail}>
           <div className="flex items-center gap-2"><Mail className="h-5 w-5 text-blue-600" /><span className="font-medium">Connect Gmail</span></div>
           <p className="text-xs text-gray-500">OAuth with Gmail API</p>
         </Button>
         <Button variant="outline" className="h-auto flex-col items-start gap-1 border-gray-200 bg-white py-4"
-          onClick={() => toast.info('Outlook OAuth requires configuring MICROSOFT_CLIENT_ID. Once configured, this button will initiate the Microsoft Graph OAuth flow.')}>
+          onClick={handleConnectOutlook}>
           <div className="flex items-center gap-2"><Mail className="h-5 w-5 text-blue-600" /><span className="font-medium">Connect Outlook</span></div>
           <p className="text-xs text-gray-500">Microsoft Graph API</p>
         </Button>
