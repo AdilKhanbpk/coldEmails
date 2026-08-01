@@ -1,4 +1,5 @@
-import OutreachTypesClient from './outreach-types-client';
+import dynamic from 'next/dynamic';
+const OutreachTypesClient = dynamic(() => import('./outreach-types-client').then(mod => mod.default), { ssr: false, loading: () => <p className="text-center">Loading outreach types...</p> });
 
 export default function OutreachTypesPage() {
   return (

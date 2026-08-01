@@ -23,11 +23,10 @@ export function MarketingHeader() {
 
   return (
     <header
-      className={`sticky top-0 z-50 transition-colors duration-300 ${
-        scrolled
+      className={`sticky top-0 z-50 transition-colors duration-300 ${scrolled
           ? 'border-b border-cream-300 bg-cream-100/85 backdrop-blur-md'
           : 'border-b border-transparent bg-transparent'
-      }`}
+        }`}
     >
       <div className="mk-container flex h-16 items-center justify-between">
         <Link href="/" className="flex items-center gap-2 transition-opacity hover:opacity-80">
@@ -55,10 +54,10 @@ export function MarketingHeader() {
         </nav>
 
         <div className="hidden items-center gap-2 md:flex">
-          <Link href="/login" className="mk-btn-ghost">
+          <Link href="/login" prefetch={false} className="mk-btn-ghost">
             Log in
           </Link>
-          <Link href="/signup" className="mk-btn-primary">
+          <Link href="/signup" prefetch={false} className="mk-btn-primary">
             Get Started
           </Link>
         </div>
@@ -86,10 +85,10 @@ export function MarketingHeader() {
               </Link>
             ))}
             <div className="mt-2 flex flex-col gap-2 border-t border-cream-300 pt-3">
-              <Link href="/login" className="mk-btn-ghost justify-start" onClick={() => setMobileOpen(false)}>
+              <Link href="/login" prefetch={false} className="mk-btn-ghost justify-start" onClick={() => setMobileOpen(false)}>
                 Log in
               </Link>
-              <Link href="/signup" className="mk-btn-primary" onClick={() => setMobileOpen(false)}>
+              <Link href="/signup" prefetch={false} className="mk-btn-primary" onClick={() => setMobileOpen(false)}>
                 Get Started
               </Link>
             </div>

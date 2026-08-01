@@ -65,7 +65,10 @@ const SOURCE_LABELS: Record<string, string> = {
   APOLLO: 'Apollo',
 };
 
-export function LeadsClient({ outreachTypes }: { outreachTypes: OutreachTypeOption[] }) {
+import { useDashboard } from '@/app/(dashboard)/DashboardContext';
+
+export function LeadsClient() {
+  const { outreachTypes } = useDashboard();
   const router = useRouter();
   const [leads, setLeads] = useState<Lead[]>([]);
   const [loading, setLoading] = useState(true);

@@ -233,7 +233,7 @@ export default function SignupPage() {
 
             <p className="text-center text-sm text-gray-500">
               Already have an account?{' '}
-              <Link href="/login" className="font-medium text-blue-600 hover:text-blue-700">
+              <Link href="/login" prefetch={false} className="font-medium text-blue-600 hover:text-blue-700">
                 Sign in
               </Link>
             </p>

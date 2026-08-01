@@ -89,7 +89,7 @@ export function Sidebar() {
           const Icon = item.icon;
 
           return (
-            <Link
+            <Link prefetch={false} shallow={true}
               key={item.label}
               href={item.href}
               className={cn(

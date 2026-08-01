@@ -5,6 +5,7 @@ import User from '@/models/User';
 import { redirect } from 'next/navigation';
 import { Sidebar } from '@/components/sidebar';
 import { TopBar } from '@/components/topbar';
+import { DashboardProvider } from './DashboardContext';
 
 export default async function DashboardLayout({
   children,
@@ -33,25 +34,15 @@ export default async function DashboardLayout({
     redirect('/onboarding/business-profile');
   }
 
-  const leads = await (await import('@/models/UserLead')).default
-    .find({ userId: session.user.id })
-    .select('companyName email')
-    .limit(100)
-    .lean();
-
-  const formattedLeads = leads.map((l: any) => ({
-    id: l._id.toString(),
-    companyName: l.companyName,
-    email: l.email,
-  }));
-
   return (
-    <div className="flex h-screen overflow-hidden bg-gray-50">
-      <Sidebar />
-      <div className="flex flex-1 flex-col overflow-hidden">
-        <TopBar userName={user.name} userEmail={user.email} userRole={user.role} leads={formattedLeads} />
-        <main className="flex-1 overflow-y-auto">{children}</main>
+    <DashboardProvider>
+      <div className="flex h-screen overflow-hidden bg-gray-50">
+        <Sidebar />
+        <div className="flex flex-1 flex-col overflow-hidden">
+          <TopBar userName={user.name} userEmail={user.email} userRole={user.role} />
+          <main className="flex-1 overflow-y-auto">{children}</main>
+        </div>
       </div>
-    </div>
+    </DashboardProvider>
   );
 }

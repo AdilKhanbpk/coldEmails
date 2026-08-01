@@ -21,8 +21,40 @@ const roleLabels: Record<Role, string> = {
   VIEWER: 'Viewer',
 };
 
-export function TopBar({ userName, userEmail, userRole, leads = [] }: TopBarProps) {
+export function TopBar({ userName, userEmail, userRole, leads: initialLeads = [] }: TopBarProps) {
   const [paletteOpen, setPaletteOpen] = useState(false);
+  const [leads, setLeads] = useState(initialLeads);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    const loadLeads = async () => {
+      try {
+        const res = await fetch('/api/leads?pageSize=50&sortBy=createdAt&sortOrder=desc', {
+          signal: controller.signal,
+        });
+
+        if (!res.ok) return;
+
+        const data = await res.json();
+        const nextLeads = Array.isArray(data?.leads)
+          ? data.leads.map((lead: any) => ({
+              id: lead.id || lead._id,
+              companyName: lead.companyName || 'Untitled lead',
+              email: lead.email || '',
+            }))
+          : [];
+
+        setLeads(nextLeads);
+      } catch {
+        // ignore fetch failures; the palette can still work without lead suggestions
+      }
+    };
+
+    void loadLeads();
+
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

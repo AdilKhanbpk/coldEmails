@@ -1,20 +1,17 @@
 import { getServerSession } from 'next-auth';
 import { authOptions } from '@/lib/auth';
 import { connectDB } from '@/lib/mongodb';
-import OutreachType from '@/models/OutreachType';
+
 import { redirect } from 'next/navigation';
-import { LeadsClient } from './leads-client';
+import dynamic from 'next/dynamic';
+const LeadsClient = dynamic(() => import('./leads-client').then(mod => mod.LeadsClient), { ssr: false, loading: () => <p className="text-center">Loading leads...</p> });
 
 export default async function LeadsPage() {
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) redirect('/login');
 
   await connectDB();
-  const outreachTypes = await OutreachType.find({ userId: session.user.id })
-    .select('name')
-    .lean();
 
-  const formatted = outreachTypes.map((ot: any) => ({ id: ot._id.toString(), name: ot.name }));
-
-  return <LeadsClient outreachTypes={formatted} />;
+  // No need to fetch outreach types here; they are provided via DashboardContext
+  return <LeadsClient />;
 }

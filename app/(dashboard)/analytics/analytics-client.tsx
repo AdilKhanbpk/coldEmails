@@ -10,6 +10,9 @@ import {
   Tooltip, ResponsiveContainer, Funnel, FunnelChart, LabelList,
 } from 'recharts';
 import { format, subDays } from 'date-fns';
+import { useDashboard } from '@/app/(dashboard)/DashboardContext';
+import type { OutreachType } from '@/app/(dashboard)/DashboardContext';
+
 
 interface AnalyticsData {
   metrics: {
@@ -30,7 +33,8 @@ interface AnalyticsData {
   funnel: { sent: number; opened: number; replied: number; meetingBooked: number };
 }
 
-export function AnalyticsClient({ outreachTypes }: { outreachTypes: { id: string; name: string }[] }) {
+export function AnalyticsClient() {
+  const { outreachTypes } = useDashboard();
   const [data, setData] = useState<AnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [outreachTypeId, setOutreachTypeId] = useState('all');
@@ -74,11 +78,11 @@ export function AnalyticsClient({ outreachTypes }: { outreachTypes: { id: string
 
   const funnelData = data
     ? [
-        { name: 'Sent', value: data.funnel.sent, fill: '#3b82f6' },
-        { name: 'Opened', value: data.funnel.opened, fill: '#60a5fa' },
-        { name: 'Replied', value: data.funnel.replied, fill: '#93c5fd' },
-        { name: 'Meeting', value: data.funnel.meetingBooked, fill: '#bfdbfe' },
-      ]
+      { name: 'Sent', value: data.funnel.sent, fill: '#3b82f6' },
+      { name: 'Opened', value: data.funnel.opened, fill: '#60a5fa' },
+      { name: 'Replied', value: data.funnel.replied, fill: '#93c5fd' },
+      { name: 'Meeting', value: data.funnel.meetingBooked, fill: '#bfdbfe' },
+    ]
     : [];
 
   return (
@@ -112,7 +116,7 @@ export function AnalyticsClient({ outreachTypes }: { outreachTypes: { id: string
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Outreach Types</SelectItem>
-            {outreachTypes.map((ot) => (
+            {outreachTypes.map((ot: OutreachType) => (
               <SelectItem key={ot.id} value={ot.id}>{ot.name}</SelectItem>
             ))}
           </SelectContent>
@@ -226,3 +230,4 @@ export function AnalyticsClient({ outreachTypes }: { outreachTypes: { id: string
     </div>
   );
 }
+export default AnalyticsClient;

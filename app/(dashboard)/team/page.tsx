@@ -3,7 +3,8 @@ import { authOptions } from '@/lib/auth';
 import { connectDB } from '@/lib/mongodb';
 import User from '@/models/User';
 import { redirect } from 'next/navigation';
-import { TeamClient } from './team-client';
+import dynamic from 'next/dynamic';
+const TeamClient = dynamic(() => import('./team-client').then(mod => mod.TeamClient), { ssr: false, loading: () => <p className="text-center">Loading team...</p> });
 
 export default async function TeamPage() {
   const session = await getServerSession(authOptions);

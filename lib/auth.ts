@@ -9,6 +9,8 @@ import User from '../models/User';
 export const authOptions: NextAuthOptions = {
   session: {
     strategy: 'jwt',
+    maxAge: 30 * 24 * 60 * 60, // 30 days
+    updateAge: 24 * 60 * 60, // 1 day
   },
   pages: {
     signIn: '/login',
@@ -44,6 +46,7 @@ export const authOptions: NextAuthOptions = {
           id: (user._id as string).toString(),
           name: user.name,
           email: user.email,
+          role: user.role,
         };
       },
     }),
@@ -94,13 +97,19 @@ export const authOptions: NextAuthOptions = {
     },
     async jwt({ token, user }) {
       if (user) {
-        token.id = user.id;
+        token.id = user.id as string;
+        token.name = user.name as string;
+        token.email = user.email as string;
+        token.role = (user as any).role;
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string;
+        session.user.name = token.name as string;
+        session.user.email = token.email as string;
+        session.user.role = (token.role as string | undefined) || 'MEMBER';
       }
       return session;
     },
