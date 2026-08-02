@@ -5,8 +5,22 @@ import { connectDB } from '@/lib/mongodb';
 import UserLead from '@/models/UserLead';
 import User from '@/models/User';
 import OutreachType from '@/models/OutreachType';
-import { scheduleJob, convertToUTC } from '@/lib/scheduler';
+import { scheduleJob } from '@/lib/scheduler';
 import { canAddLead } from '@/lib/plan-limits';
+import { fromZonedTime } from "date-fns-tz";
+
+/**
+ * Convert a local datetime string (e.g. "2026-08-05T10:30") from a given
+ * timezone into a UTC Date. Always pass the raw string — never a pre-parsed
+ * Date object — because Date objects store UTC internally and would be
+ * double-converted.
+ */
+export function convertToUTC(
+  localDateString: string,
+  timeZone: string
+): Date {
+  return fromZonedTime(localDateString, timeZone);
+}
 
 const VALID_STATUSES = ['NOT_STARTED', 'IN_PROGRESS', 'REPLIED', 'MEETING_BOOKED', 'COMPLETED', 'BOUNCED', 'UNSUBSCRIBED', 'NOT_INTERESTED'];
 const VALID_SOURCES = ['MANUAL', 'CSV', 'API', 'ZOOMINFO', 'APOLLO'];
@@ -126,18 +140,18 @@ export async function POST(req: NextRequest) {
         }, { status: 403 });
       }
     }
-    if (!country?.trim()) {
-      return NextResponse.json({ field: 'country', error: 'Country is required.' }, { status: 400 });
-    }
-    if (!outreachDescription?.trim()) {
-      return NextResponse.json({ field: 'outreachDescription', error: 'Outreach description is required.' }, { status: 400 });
-    }
-    if (!preferredTime) {
-      return NextResponse.json({ field: 'preferredTime', error: 'Preferred time is required.' }, { status: 400 });
-    }
-    if (!timezone?.trim()) {
-      return NextResponse.json({ field: 'timezone', error: 'Timezone is required.' }, { status: 400 });
-    }
+    // if (!country?.trim()) {
+    //   return NextResponse.json({ field: 'country', error: 'Country is required.' }, { status: 400 });
+    // }
+    // if (!outreachDescription?.trim()) {
+    //   return NextResponse.json({ field: 'outreachDescription', error: 'Outreach description is required.' }, { status: 400 });
+    // }
+    // if (!preferredTime) {
+    //   return NextResponse.json({ field: 'preferredTime', error: 'Preferred time is required.' }, { status: 400 });
+    // }
+    // if (!timezone?.trim()) {
+    //   return NextResponse.json({ field: 'timezone', error: 'Timezone is required.' }, { status: 400 });
+    // }
     if (!outreachTypeId) {
       return NextResponse.json({ field: 'outreachTypeId', error: 'An outreach type is required.' }, { status: 400 });
     }
@@ -164,18 +178,25 @@ export async function POST(req: NextRequest) {
       companyName: companyName.trim(),
       email: email.trim().toLowerCase(),
       services: services || [],
-      country: country.trim(),
+      country: country?.trim(),
       website: website?.trim() || null,
       outreachTypeId,
-      outreachDescription: outreachDescription.trim(),
-      preferredTime: new Date(preferredTime),
-      timezone: timezone.trim(),
+      outreachDescription: outreachDescription?.trim(),
+      preferredTime: preferredTime
+        ? convertToUTC(preferredTime, timezone?.trim() || "UTC")
+        : null,
+      timezone: timezone?.trim(),
       source: 'MANUAL',
     });
 
     if (lead.aiEnabled && lead.outreachTypeId) {
-      const utcRunAt = convertToUTC(new Date(preferredTime), timezone.trim());
-      await scheduleJob(lead._id.toString(), session.user.id, 'send_first_email', utcRunAt);
+      // Pass the raw preferredTime string directly to convertToUTC so
+      // fromZonedTime can correctly interpret it as local time in the given
+      // timezone. If no preferredTime, schedule 1 minute from now (already UTC).
+      const utcRunAt = preferredTime
+        ? convertToUTC(preferredTime, timezone?.trim() || "UTC")
+        : new Date(Date.now() + 60 * 1000);
+      await scheduleJob(lead._id.toString(), session.user.id, "send_first_email", utcRunAt);
     }
 
     return NextResponse.json({ ...lead.toObject(), id: lead._id.toString() }, { status: 201 });

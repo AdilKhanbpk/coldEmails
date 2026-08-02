@@ -185,7 +185,7 @@ export function LeadsClient() {
   return (
     <div className="space-y-4">
       {/* Filters */}
-      <div className="flex flex-wrap gap-3">
+      <div className="flex flex-wrap mt-2 gap-3">
         <Select value={filters.status} onValueChange={(v) => handleFilterChange('status', v === 'all' ? '' : v)}>
           <SelectTrigger className="w-[160px] border-gray-200">
             <SelectValue placeholder="All statuses" />
@@ -228,6 +228,20 @@ export function LeadsClient() {
           onChange={(e) => handleFilterChange('country', e.target.value)}
           className="w-[160px] border-gray-200"
         />
+        <div className=" flex flex-col gap-3 sm:flex-row">
+            <Link href="/leads/new">
+              <Button className="bg-blue-600 hover:bg-blue-700">
+                <Plus className="mr-2 h-4 w-4" />
+                Add lead manually
+              </Button>
+            </Link>
+            <Link href="/leads/import">
+              <Button variant="outline" className="border-gray-200">
+                <Upload className="mr-2 h-4 w-4" />
+                Import from file
+              </Button>
+            </Link>
+          </div>
       </div>
 
       {/* Desktop Table */}

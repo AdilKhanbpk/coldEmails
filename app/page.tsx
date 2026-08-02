@@ -1,4 +1,6 @@
 import type { Metadata } from 'next';
+import { getServerSession } from 'next-auth';
+import { authOptions } from '@/lib/auth';
 import { MarketingLayout } from '@/components/marketing/marketing-layout';
 import { FadeIn } from '@/components/marketing/fade-in';
 import { Mail, MessagesSquare, CalendarClock, ShieldCheck, Sparkles, Inbox, ArrowRight } from 'lucide-react';
@@ -80,7 +82,9 @@ const audiences = [
   },
 ];
 
-export default function HomePage() {
+export default async function HomePage() {
+  const session = await getServerSession(authOptions);
+
   return (
     <MarketingLayout>
       {/* Hero */}
@@ -100,10 +104,17 @@ export default function HomePage() {
             </FadeIn>
             <FadeIn delay={200}>
               <div className="mt-10 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
-                <a href="/signup" className="mk-btn-primary">
-                  Start Free
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </a>
+                {!session ? (
+                  <a href="/signup" className="mk-btn-primary">
+                    Start Free
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </a>
+                ) : (
+                  <a href="/dashboard" className="mk-btn-primary">
+                    Goto Dashboard
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </a>
+                )}
                 <a href="/about" className="mk-btn-ghost">
                   How it works
                 </a>
@@ -213,10 +224,17 @@ export default function HomePage() {
                 Connect an inbox, paste a few example emails, and add your first lead. That&apos;s it.
               </p>
               <div className="mt-8">
-                <a href="/signup" className="mk-btn-primary">
-                  Get Started
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </a>
+                {!session ? (
+                  <a href="/signup" className="mk-btn-primary">
+                    Get Started
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </a>
+                ) : (
+                  <a href="/dashboard" className="mk-btn-primary">
+                    Goto Dashboard
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </a>
+                )}
               </div>
             </div>
           </FadeIn>

@@ -4,7 +4,8 @@ import { connectDB } from '@/lib/mongodb';
 import OutreachType from '@/models/OutreachType';
 import { redirect } from 'next/navigation';
 import dynamic from 'next/dynamic';
-const AnalyticsClient = dynamic(() => import('./analytics-client'), { ssr: false, loading: () => <p className="text-center">Loading analytics...</p> });
+import AnalyticsClient from './analytics-client';
+// const AnalyticsClient = dynamic(() => import('./analytics-client'), { ssr: false, loading: () => <p className="text-center">Loading analytics...</p> });
 
 export default async function AnalyticsPage() {
   const session = await getServerSession(authOptions);

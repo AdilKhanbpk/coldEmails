@@ -1,6 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import { z } from 'zod';
 import { signIn } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
@@ -10,32 +13,40 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Mail, Lock, Loader2 } from 'lucide-react';
 
+const loginSchema = z.object({
+    email: z.string().min(1, 'Email is required').email('Please enter a valid email address'),
+    password: z.string().min(1, 'Password is required'),
+});
+
+type LoginFormValues = z.infer<typeof loginSchema>;
+
 export default function LoginForm() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const callbackUrl = searchParams.get('callbackUrl') || '/dashboard';
 
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [error, setError] = useState('');
-    const [loading, setLoading] = useState(false);
+    const [serverError, setServerError] = useState('');
     const [oauthLoading, setOauthLoading] = useState<string | null>(null);
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
-        setError('');
-        setLoading(true);
+    const {
+        register,
+        handleSubmit,
+        formState: { errors, isSubmitting },
+    } = useForm<LoginFormValues>({
+        resolver: zodResolver(loginSchema),
+    });
+
+    const onSubmit = async (data: LoginFormValues) => {
+        setServerError('');
 
         const res = await signIn('credentials', {
-            email,
-            password,
+            email: data.email,
+            password: data.password,
             redirect: false,
         });
 
-        setLoading(false);
-
         if (res?.error) {
-            setError('Incorrect email or password. Please try again.');
+            setServerError('Incorrect email or password. Please try again.');
             return;
         }
 
@@ -104,46 +115,51 @@ export default function LoginForm() {
                             </div>
                         </div>
 
-                        <form onSubmit={handleSubmit} className="space-y-3">
+                        <form onSubmit={handleSubmit(onSubmit)} className="space-y-3">
                             <div className="space-y-1.5">
                                 <Label htmlFor="email">Email</Label>
                                 <Input
                                     id="email"
                                     type="email"
                                     placeholder="you@company.com"
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    required
                                     autoComplete="email"
+                                    {...register('email')}
                                 />
+                                {errors.email && (
+                                    <p className="text-xs text-red-600">{errors.email.message}</p>
+                                )}
                             </div>
+
                             <div className="space-y-1.5">
-                                <div className="flex items-center justify-between">
-                                    <Label htmlFor="password">Password</Label>
-                                </div>
+                                <Label htmlFor="password">Password</Label>
                                 <div className="relative">
                                     <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                                     <Input
                                         id="password"
                                         type="password"
                                         placeholder="Enter your password"
-                                        value={password}
-                                        onChange={(e) => setPassword(e.target.value)}
-                                        required
                                         autoComplete="current-password"
                                         className="pl-9"
+                                        {...register('password')}
                                     />
                                 </div>
+                                {errors.password && (
+                                    <p className="text-xs text-red-600">{errors.password.message}</p>
+                                )}
                             </div>
 
-                            {error && (
+                            {serverError && (
                                 <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-md px-3 py-2">
-                                    {error}
+                                    {serverError}
                                 </p>
                             )}
 
-                            <Button type="submit" disabled={loading} className="w-full bg-blue-600 hover:bg-blue-700">
-                                {loading ? (
+                            <Button
+                                type="submit"
+                                disabled={isSubmitting}
+                                className="w-full bg-blue-600 hover:bg-blue-700"
+                            >
+                                {isSubmitting ? (
                                     <>
                                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                         Signing in...
@@ -156,7 +172,11 @@ export default function LoginForm() {
 
                         <p className="text-center text-sm text-gray-500">
                             Don&apos;t have an account?{' '}
-                            <Link href="/signup" prefetch={false} className="font-medium text-blue-600 hover:text-blue-700">
+                            <Link
+                                href="/signup"
+                                prefetch={false}
+                                className="font-medium text-blue-600 hover:text-blue-700"
+                            >
                                 Sign up
                             </Link>
                         </p>

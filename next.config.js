@@ -8,9 +8,12 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
   images: { unoptimized: true },
-  experimental: {
-    serverComponentsExternalPackages: ['googleapis', '@microsoft/microsoft-graph-client', 'nodemailer', 'openai'],
-  },
+  serverExternalPackages: [
+    'googleapis',
+    '@microsoft/microsoft-graph-client',
+    'nodemailer',
+    'openai',
+  ],
 };
 
 const withBundleAnalyzer = require('@next/bundle-analyzer')({

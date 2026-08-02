@@ -1,5 +1,6 @@
 import dynamic from 'next/dynamic';
-const InboxesClient = dynamic(() => import('./inboxes-client').then(mod => mod.InboxesClient), { ssr: false, loading: () => <p className="text-center">Loading inboxes...</p> });
+import { InboxesClient } from './inboxes-client';
+// const InboxesClient = dynamic(() => import('./inboxes-client').then(mod => mod.InboxesClient), { ssr: false, loading: () => <p className="text-center">Loading inboxes...</p> });
 
 export default function InboxesPage() {
   return (

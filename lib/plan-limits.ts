@@ -12,18 +12,18 @@ export interface PlanLimits {
 
 export const PLAN_LIMITS: Record<Plan, PlanLimits> = {
   FREE: {
-    maxLeads: 50,
-    maxEmailsPerMonth: 100,
+    maxLeads: 300,
+    maxEmailsPerMonth: 300,
     features: ['1 inbox', 'Basic analytics', 'AI outreach'],
   },
   STARTER: {
-    maxLeads: 500,
-    maxEmailsPerMonth: 2000,
+    maxLeads: 5000,
+    maxEmailsPerMonth: 25000,
     features: ['2 inboxes', 'Analytics', 'AI outreach', 'Meeting booking'],
   },
   PROFESSIONAL: {
-    maxLeads: 5000,
-    maxEmailsPerMonth: 20000,
+    maxLeads: 12000,
+    maxEmailsPerMonth: 50000,
     features: ['5 inboxes', 'Advanced analytics', 'AI outreach', 'Meeting booking', 'Team workspace'],
   },
   BUSINESS: {

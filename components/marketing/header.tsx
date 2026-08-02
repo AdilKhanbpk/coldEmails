@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { Mail, Menu, X } from 'lucide-react';
+import { useSession } from 'next-auth/react';
 
 const navLinks = [
   { href: '/', label: 'Product' },
@@ -13,6 +14,8 @@ const navLinks = [
 export function MarketingHeader() {
   const [scrolled, setScrolled] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { data: session, status } = useSession();
+
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
@@ -52,7 +55,8 @@ export function MarketingHeader() {
             </Link>
           ))}
         </nav>
-
+        
+        {status === "loading" ? null : !session ? (
         <div className="hidden items-center gap-2 md:flex">
           <Link href="/login" prefetch={false} className="mk-btn-ghost">
             Log in
@@ -61,6 +65,12 @@ export function MarketingHeader() {
             Get Started
           </Link>
         </div>
+        ) : (
+         <Link href="/dashboard" prefetch={false} className="mk-btn-primary">
+            Dashboard
+          </Link>
+        )
+        }
 
         <button
           className="rounded-lg p-2 text-ink-soft transition-colors hover:bg-cream-200 md:hidden"
@@ -84,6 +94,7 @@ export function MarketingHeader() {
                 {link.label}
               </Link>
             ))}
+            {status == "loading" ? null : !session ? (
             <div className="mt-2 flex flex-col gap-2 border-t border-cream-300 pt-3">
               <Link href="/login" prefetch={false} className="mk-btn-ghost justify-start" onClick={() => setMobileOpen(false)}>
                 Log in
@@ -92,6 +103,11 @@ export function MarketingHeader() {
                 Get Started
               </Link>
             </div>
+            ) : (
+              <Link href="/dashboard" prefetch={false} className="mk-btn-primary" onClick={() => setMobileOpen(false)}>
+                Dashboard
+              </Link>
+            )}
           </nav>
         </div>
       )}
