@@ -1,0 +1,20 @@
+{
+  "name": "outreach-ai-worker",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "start": "ts-node --project tsconfig.json index.ts",
+    "build": "tsc --project tsconfig.json",
+    "start:prod": "node dist/index.js"
+  },
+  "dependencies": {
+    "agenda": "5.0.0",
+    "dotenv": "^16.4.5",
+    "mongoose": "^9.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.6.2",
+    "ts-node": "^10.9.2",
+    "typescript": "5.2.2"
+  }
+}

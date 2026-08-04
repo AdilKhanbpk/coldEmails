@@ -9,18 +9,19 @@ import { sendEmail } from '@/lib/email-sender';
 import { getInboxForUser } from '@/lib/scheduler';
 
 interface Params {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 export async function POST(req: Request, { params }: Params) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     await connectDB();
-    const lead = await UserLead.findOne({ _id: params.id, userId: session.user.id })
+    const lead = await UserLead.findOne({ _id: id, userId: session.user.id })
       .select('_id email companyName conversationId')
       .lean();
 

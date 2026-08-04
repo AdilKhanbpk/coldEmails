@@ -5,9 +5,9 @@ import { connectDB } from '@/lib/mongodb';
 import UserLead from '@/models/UserLead';
 import User from '@/models/User';
 import OutreachType from '@/models/OutreachType';
-import { scheduleJob } from '@/lib/scheduler';
 import { canAddLead } from '@/lib/plan-limits';
 import { fromZonedTime } from "date-fns-tz";
+import { createLeadJobs } from '@/lib/createLeadJobs';
 
 /**
  * Convert a local datetime string (e.g. "2026-08-05T10:30") from a given
@@ -190,13 +190,48 @@ export async function POST(req: NextRequest) {
     });
 
     if (lead.aiEnabled && lead.outreachTypeId) {
-      // Pass the raw preferredTime string directly to convertToUTC so
-      // fromZonedTime can correctly interpret it as local time in the given
-      // timezone. If no preferredTime, schedule 1 minute from now (already UTC).
-      const utcRunAt = preferredTime
-        ? convertToUTC(preferredTime, timezone?.trim() || "UTC")
+      const tz = timezone?.trim() || 'UTC';
+
+      // UTC time for the first email.
+      const firstEmailRunAt = preferredTime
+        ? convertToUTC(preferredTime, tz)
         : new Date(Date.now() + 60 * 1000);
-      await scheduleJob(lead._id.toString(), session.user.id, "send_first_email", utcRunAt);
+
+      // Extract hour/minute in the lead's timezone — reused for all followups.
+      const timeParts = new Intl.DateTimeFormat('en-US', {
+        timeZone: tz,
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).formatToParts(firstEmailRunAt);
+
+      const preferredHour   = parseInt(timeParts.find((p) => p.type === 'hour')?.value   || '9', 10);
+      const preferredMinute = parseInt(timeParts.find((p) => p.type === 'minute')?.value || '0', 10);
+
+      const sequenceSteps = outreachType.sequenceSteps as { stepNumber: number; delayDays: number }[];
+
+      // Write all Agenda job documents directly to MongoDB.
+      // The worker on Render will pick them up when their nextRunAt arrives.
+      // If this fails, roll back the lead so we never have a lead without jobs.
+      try {
+        await createLeadJobs({
+          leadId: lead._id.toString(),
+          userId: session.user.id,
+          firstEmailRunAt,
+          sequenceSteps,
+          preferredHour,
+          preferredMinute,
+          timezone: tz,
+        });
+      } catch (jobError) {
+        // Roll back — delete the lead we just created.
+        await UserLead.findByIdAndDelete(lead._id);
+        console.error('[leads/POST] Failed to create Agenda jobs, lead rolled back:', jobError);
+        return NextResponse.json(
+          { error: 'Failed to schedule outreach jobs. Lead was not saved. Please try again.' },
+          { status: 500 }
+        );
+      }
     }
 
     return NextResponse.json({ ...lead.toObject(), id: lead._id.toString() }, { status: 201 });

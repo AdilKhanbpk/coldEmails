@@ -6,18 +6,19 @@ import UserLead from '@/models/UserLead';
 import Message from '@/models/Message';
 
 interface Params {
-  params: { id: string };
+   params: Promise<{ id: string }>;
 }
 
 export async function GET(req: Request, { params }: Params) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     await connectDB();
-    const lead = await UserLead.findOne({ _id: params.id, userId: session.user.id })
+    const lead = await UserLead.findOne({ _id: id, userId: session.user.id })
       .select('_id conversationId')
       .lean();
 
@@ -25,7 +26,7 @@ export async function GET(req: Request, { params }: Params) {
       return NextResponse.json({ error: 'Lead not found.' }, { status: 404 });
     }
 
-    const messages = await Message.find({ leadId: params.id })
+    const messages = await Message.find({ leadId: id })
       .sort({ createdAt: 1 })
       .select('role content subject aiGenerated senderEmail createdAt')
       .lean();

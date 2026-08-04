@@ -6,18 +6,19 @@ import UserLead from '@/models/UserLead';
 import Job from '@/models/Job';
 
 interface Params {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 export async function GET(req: Request, { params }: Params) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     await connectDB();
-    const lead = await UserLead.findOne({ _id: params.id, userId: session.user.id })
+    const lead = await UserLead.findOne({ _id: id, userId: session.user.id })
       .populate({ path: 'outreachTypeId', select: 'name' })
       .lean();
 
@@ -33,6 +34,7 @@ export async function GET(req: Request, { params }: Params) {
 
 export async function PUT(req: Request, { params }: Params) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -41,7 +43,7 @@ export async function PUT(req: Request, { params }: Params) {
     await connectDB();
     const body = await req.json();
 
-    const existing = await UserLead.findOne({ _id: params.id, userId: session.user.id }).lean();
+    const existing = await UserLead.findOne({ _id: id, userId: session.user.id }).lean();
     if (!existing) {
       return NextResponse.json({ error: 'Not found.' }, { status: 404 });
     }
@@ -66,7 +68,7 @@ export async function PUT(req: Request, { params }: Params) {
       return NextResponse.json({ field: 'companyName', error: 'Company name is required.' }, { status: 400 });
     }
 
-    const updated = await UserLead.findByIdAndUpdate(params.id, updateData, { new: true }).lean();
+    const updated = await UserLead.findByIdAndUpdate(id, updateData, { new: true }).lean();
     return NextResponse.json({ ...updated, id: updated!._id.toString() });
   } catch {
     return NextResponse.json({ error: 'Failed to update lead.' }, { status: 500 });
@@ -79,23 +81,24 @@ export async function PATCH(req: Request, { params }: Params) {
 
 export async function DELETE(req: Request, { params }: Params) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     await connectDB();
-    const existing = await UserLead.findOne({ _id: params.id, userId: session.user.id }).lean();
+    const existing = await UserLead.findOne({ _id: id, userId: session.user.id }).lean();
     if (!existing) {
       return NextResponse.json({ error: 'Not found.' }, { status: 404 });
     }
 
     await Job.updateMany(
-      { leadId: params.id, status: { $in: ['SCHEDULED', 'RUNNING'] } },
+      { leadId: id, status: { $in: ['SCHEDULED', 'RUNNING'] } },
       { status: 'CANCELLED' },
     );
 
-    await UserLead.findByIdAndDelete(params.id);
+    await UserLead.findByIdAndDelete(id);
 
     return NextResponse.json({ success: true });
   } catch {

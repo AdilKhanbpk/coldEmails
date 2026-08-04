@@ -7,16 +7,17 @@ import { redirect } from 'next/navigation';
 import { LeadDetailContent } from './lead-detail-content';
 
 interface PageProps {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 export default async function LeadDetailPage({ params }: PageProps) {
+  const { id } = await params;
   const session = await getServerSession(authOptions);
   if (!session?.user?.id) redirect('/login');
 
   await connectDB();
 
-  const lead = await UserLead.findOne({ _id: params.id, userId: session.user.id })
+  const lead = await UserLead.findOne({ _id: id, userId: session.user.id })
     .populate({ path: 'outreachTypeId', select: 'name' })
     .lean();
 
@@ -27,9 +28,29 @@ export default async function LeadDetailPage({ params }: PageProps) {
     .lean();
 
   const formattedLead = {
-    ...lead,
     id: lead._id.toString(),
-    outreachType: lead.outreachTypeId ? { id: (lead.outreachTypeId as any)._id.toString(), name: (lead.outreachTypeId as any).name } : null,
+    companyName: lead.companyName,
+    email: lead.email,
+    services: lead.services ?? [],
+    country: lead.country ?? '',
+    website: lead.website ?? null,
+    outreachDescription: lead.outreachDescription ?? '',
+    preferredTime: lead.preferredTime ? lead.preferredTime.toISOString() : null,
+    timezone: lead.timezone ?? 'UTC',
+    currentStep: lead.currentStep ?? 0,
+    status: lead.status,
+    replyTag: lead.replyTag ?? null,
+    aiEnabled: lead.aiEnabled ?? true,
+    source: lead.source,
+    lastMessageDate: lead.lastMessageDate ? lead.lastMessageDate.toISOString() : null,
+    nextMessageDate: lead.nextMessageDate ? lead.nextMessageDate.toISOString() : null,
+    createdAt: lead.createdAt ? lead.createdAt.toISOString() : null,
+    outreachType: lead.outreachTypeId
+      ? {
+          id: (lead.outreachTypeId as any)._id.toString(),
+          name: (lead.outreachTypeId as any).name,
+        }
+      : null,
   };
   const formattedTypes = outreachTypes.map((ot: any) => ({ id: ot._id.toString(), name: ot.name }));
 

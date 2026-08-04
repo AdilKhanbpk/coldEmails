@@ -6,18 +6,19 @@ import Meeting from '@/models/Meeting';
 import { confirmMeeting, cancelMeeting, rescheduleMeeting } from '@/lib/reply-handler';
 
 interface Params {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }
 
 export async function GET(req: Request, { params }: Params) {
   try {
+    const { id } = await params;
     const session = await getServerSession(authOptions);
     if (!session?.user?.id) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     await connectDB();
-    const meetings = await Meeting.find({ leadId: params.id, userId: session.user.id })
+    const meetings = await Meeting.find({ leadId: id, userId: session.user.id })
       .sort({ scheduledTime: 1 })
       .populate({ path: 'leadId', select: 'companyName email' })
       .lean();
