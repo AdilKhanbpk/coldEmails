@@ -1,41 +1,55 @@
 /**
- * Standalone Agenda worker — deploy this on Render (or any persistent Node server).
+ * Standalone Agenda worker — deploy this on Render.
  *
- * This process:
- *   1. Connects to MongoDB (same DB as the Next.js app).
- *   2. Registers all job handlers.
- *   3. Starts Agenda so it continuously polls for due jobs and executes them.
+ * What this process does:
+ *   1. Connects to the same MongoDB as the Next.js app.
+ *   2. Registers job handlers for send_first_email and send_followup_N.
+ *   3. Starts Agenda — it polls MongoDB every 30s and fires due jobs.
  *
- * Job handlers will be added here as you build them out.
- * For now the worker starts and registers placeholder handlers so Agenda
- * doesn't throw "undefined handler" errors for jobs already in the DB.
+ * Job creation happens on the Next.js side (lib/createLeadJobs.ts).
+ * This worker only runs them.
  */
 
-import 'dotenv/config';
 import agenda from './lib/agenda';
+import { handleSendFirstEmail, handleSendFollowup } from './lib/emailHandler';
 
-// ─── Register job handlers ────────────────────────────────────────────────────
-// Each agenda.define() call tells Agenda what to do when a job of that name
-// fires. You will fill in the actual email-sending logic later.
+// ─── Job handlers ─────────────────────────────────────────────────────────────
 
-agenda.define('send_first_email', async (job) => {
-  const { leadId, userId, stepNumber } = job.attrs.data;
-  console.log(`[worker] send_first_email | leadId=${leadId} userId=${userId} step=${stepNumber}`);
-  // TODO: implement email sending logic here
+/**
+ * send_first_email
+ *
+ * Fired when it's time to send the very first email to a lead.
+ * This handler also generates ALL followup email content via AI at once
+ * and stores it in the followup job documents so they don't need AI later.
+ */
+agenda.define('send_first_email', { concurrency: 3 }, async (job:any) => {
+  try {
+    await handleSendFirstEmail(job, agenda);
+  } catch (err) {
+    console.error('[worker] Unhandled error in send_first_email:', err);
+    throw err; // Let Agenda mark the job as failed
+  }
 });
 
-// Handles all followup steps (send_followup_2, send_followup_3, etc.)
-// Agenda matches job names exactly, so we register a handler per possible step.
-// In practice outreach sequences rarely exceed 10 steps.
+/**
+ * send_followup_2 through send_followup_10
+ *
+ * Fired for each followup step. Email content was pre-generated and stored
+ * in job.attrs.data.emailContent by the send_first_email handler.
+ */
 for (let step = 2; step <= 10; step++) {
-  agenda.define(`send_followup_${step}`, async (job) => {
-    const { leadId, userId, stepNumber } = job.attrs.data;
-    console.log(`[worker] send_followup_${step} | leadId=${leadId} userId=${userId} step=${stepNumber}`);
-    // TODO: implement followup email sending logic here
+  agenda.define(`send_followup_${step}`, { concurrency: 3 }, async (job:any) => {
+    try {
+      await handleSendFollowup(job);
+    } catch (err) {
+      console.error(`[worker] Unhandled error in send_followup_${step}:`, err);
+      throw err;
+    }
   });
 }
 
 // ─── Graceful shutdown ────────────────────────────────────────────────────────
+
 async function gracefulShutdown(signal: string) {
   console.log(`[worker] ${signal} received — stopping Agenda gracefully`);
   await agenda.stop();
@@ -43,9 +57,10 @@ async function gracefulShutdown(signal: string) {
 }
 
 process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
 
 // ─── Start ────────────────────────────────────────────────────────────────────
+
 (async () => {
   try {
     await agenda.start();

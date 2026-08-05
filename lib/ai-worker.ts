@@ -78,6 +78,115 @@ export async function generateOutreachMessage(
   return callLLM(ctx);
 }
 
+/**
+ * Generate the FULL outreach sequence in one single AI call.
+ *
+ * This is the correct approach for pre-generating all emails at lead creation
+ * time. Each email in the sequence is aware of all previous emails because
+ * they are generated together in one prompt — the AI sees the full sequence
+ * context as it writes each step.
+ *
+ * Returns an array of emails ordered by step number.
+ */
+export async function generateFullSequence(
+  leadId: string,
+  userId: string,
+  outreachTypeId: string,
+  totalSteps: number,
+): Promise<GeneratedEmail[]> {
+  await connectDB();
+
+  const [user, outreachType, lead] = await Promise.all([
+    User.findById(userId).select('businessName businessDescription services').lean(),
+    OutreachType.findById(outreachTypeId).select('systemPrompt exampleEmails sequenceSteps').lean(),
+    UserLead.findById(leadId).select('companyName email country website services outreachDescription').lean(),
+  ]);
+
+  if (!user || !outreachType || !lead) {
+    throw new Error('Missing context for full sequence generation.');
+  }
+
+  const model = getChatModel();
+
+  const examplesText = (outreachType.exampleEmails as string[])
+    .map((email, i) => `Example ${i + 1}:\n${email}`)
+    .join('\n\n---\n\n');
+
+  const leadInfo = [
+    `Company: ${lead.companyName}`,
+    `Country: ${lead.country}`,
+    (lead as any).website ? `Website: ${(lead as any).website}` : null,
+    `Services they offer: ${lead.services.join(', ')}`,
+    `Outreach description: ${lead.outreachDescription}`,
+  ].filter(Boolean).join('\n');
+
+  const systemText = [
+    outreachType.systemPrompt,
+    '',
+    `You are writing a full outreach email sequence on behalf of ${user.businessName || 'our business'}.`,
+    `Business description: ${user.businessDescription || ''}`,
+    `Services we offer: ${user.services.join(', ')}`,
+    '',
+    'Here are example emails that show the desired tone and style. Match the voice exactly — do NOT copy verbatim.',
+    '',
+    examplesText,
+    '',
+    'CRITICAL RULES:',
+    '1. Write ALL emails in the sequence together so each one naturally references the previous.',
+    '2. Email 1 is the cold outreach — introduce yourself and make a compelling offer.',
+    `3. Emails 2+ are follow-ups — reference what was said in the previous email(s) naturally.`,
+    '4. Keep each email concise (under 150 words).',
+    '5. Do not use placeholders like [Name] or [Company] — use the real company name from lead info.',
+    '6. Each subject line should be short, specific, and different from the others.',
+    '7. Each email must end with a clear call-to-action.',
+    '8. NEVER invent facts, prices, or details you do not know.',
+    '',
+    `Return ONLY a JSON array with exactly ${totalSteps} objects, each with "subject" and "body" keys.`,
+    'Example format: [{"subject":"...","body":"..."},{"subject":"...","body":"..."}]',
+    'No markdown, no code fences, no explanation — just the raw JSON array.',
+  ].join('\n');
+
+  const userText = [
+    `Write a ${totalSteps}-email outreach sequence for the following lead:`,
+    '',
+    leadInfo,
+    '',
+    `Generate all ${totalSteps} emails as a JSON array. Each email should feel like a natural`,
+    'continuation of the previous one — the follow-ups must reference earlier emails.',
+  ].join('\n');
+
+  const response = await model.invoke([
+    new SystemMessage(systemText),
+    new HumanMessage(userText),
+  ]);
+
+  const content = extractContent(response);
+  return parseEmailSequence(content, totalSteps);
+}
+
+function parseEmailSequence(content: string, expectedCount: number): GeneratedEmail[] {
+  const arr = extractJSONArray(content);
+
+  if (!Array.isArray(arr)) {
+    throw new Error('AI did not return a JSON array for the sequence.');
+  }
+
+  const emails: GeneratedEmail[] = [];
+  for (let i = 0; i < arr.length; i++) {
+    const item = arr[i] as Record<string, unknown>;
+    if (!item?.subject || !item?.body) {
+      throw new Error(`AI sequence item ${i + 1} is missing subject or body.`);
+    }
+    emails.push({ subject: item.subject as string, body: item.body as string });
+  }
+
+  if (emails.length < expectedCount) {
+    throw new Error(`AI returned ${emails.length} emails but ${expectedCount} were expected.`);
+  }
+
+  return emails;
+}
+
 async function callLLM(ctx: EmailGenerationContext): Promise<GeneratedEmail> {
   const model = getChatModel();
 
@@ -235,7 +344,7 @@ function extractContent(response: unknown): string {
 function parseEmailJSON(content: string): GeneratedEmail {
   const json = extractJSON(content);
   if (!json?.subject || !json?.body) throw new Error('AI response missing subject or body.');
-  return { subject: json.subject, body: json.body };
+  return { subject: json.subject as string, body: json.body as string };
 }
 
 function parseReplyDecision(content: string): ReplyDecision {
@@ -249,35 +358,64 @@ function parseReplyDecision(content: string): ReplyDecision {
   }
   const validTags: ReplyTagType[] = ['INTERESTED', 'WANTS_MEETING', 'NOT_INTERESTED', 'OUT_OF_OFFICE'];
   const tag = validTags.includes(json.tag as ReplyTagType) ? (json.tag as ReplyTagType) : undefined;
+  const meetingSlots = Array.isArray(json.meetingSlots)
+    ? (json.meetingSlots as unknown[]).map(String)
+    : undefined;
   return {
     action,
-    subject: json.subject,
-    body: json.body,
-    meetingSlots: json.meetingSlots || undefined,
+    subject: json.subject as string,
+    body: json.body as string,
+    meetingSlots,
     tag,
   };
 }
 
 function extractJSON(text: string): Record<string, unknown> | null {
   try {
-    return JSON.parse(text);
-  } catch {
-    const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (fenceMatch) {
-      try {
-        return JSON.parse(fenceMatch[1].trim());
-      } catch {
-        // continue
-      }
-    }
-    const braceMatch = text.match(/\{[\s\S]*\}/);
-    if (braceMatch) {
-      try {
-        return JSON.parse(braceMatch[0]);
-      } catch {
-        // continue
-      }
-    }
-    return null;
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+  } catch { /* continue */ }
+
+  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenceMatch) {
+    try {
+      const parsed = JSON.parse(fenceMatch[1].trim());
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+    } catch { /* continue */ }
   }
+
+  const braceMatch = text.match(/\{[\s\S]*\}/);
+  if (braceMatch) {
+    try {
+      const parsed = JSON.parse(braceMatch[0]);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) return parsed;
+    } catch { /* continue */ }
+  }
+
+  return null;
+}
+
+function extractJSONArray(text: string): unknown[] | null {
+  try {
+    const parsed = JSON.parse(text);
+    if (Array.isArray(parsed)) return parsed;
+  } catch { /* continue */ }
+
+  const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+  if (fenceMatch) {
+    try {
+      const parsed = JSON.parse(fenceMatch[1].trim());
+      if (Array.isArray(parsed)) return parsed;
+    } catch { /* continue */ }
+  }
+
+  const arrayMatch = text.match(/\[[\s\S]*\]/);
+  if (arrayMatch) {
+    try {
+      const parsed = JSON.parse(arrayMatch[0]);
+      if (Array.isArray(parsed)) return parsed;
+    } catch { /* continue */ }
+  }
+
+  return null;
 }

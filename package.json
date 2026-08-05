@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "worker:dev": "ts-node --project tsconfig.json -e \"require('dotenv/config')\" worker/index.ts",
+    "worker:build": "tsc --project tsconfig.worker.json",
+    "worker:start": "node dist/worker/index.js"
   },
   "dependencies": {
     "@auth/mongodb-adapter": "^3.11.3",
@@ -96,6 +99,7 @@
     "@next/bundle-analyzer": "^16.2.12",
     "@types/bcryptjs": "^2.4.6",
     "@types/nodemailer": "^8.0.1",
-    "@types/papaparse": "^5.5.2"
+    "@types/papaparse": "^5.5.2",
+    "ts-node": "^10.9.2"
   }
 }
