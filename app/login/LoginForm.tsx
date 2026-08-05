@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -20,7 +20,8 @@ const loginSchema = z.object({
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 
-export default function LoginForm() {
+// Isolated component that uses useSearchParams — must be inside Suspense
+function LoginFormInner() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const callbackUrl = searchParams.get('callbackUrl') || '/dashboard';
@@ -184,6 +185,20 @@ export default function LoginForm() {
                 </Card>
             </div>
         </div>
+    );
+}
+
+// Default export wraps the form in Suspense — required because useSearchParams
+// causes a CSR bailout during static generation without it.
+export default function LoginForm() {
+    return (
+        <Suspense fallback={
+            <div className="flex min-h-screen items-center justify-center bg-gray-50">
+                <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+            </div>
+        }>
+            <LoginFormInner />
+        </Suspense>
     );
 }
 
