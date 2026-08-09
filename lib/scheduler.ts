@@ -77,6 +77,16 @@ export async function cancelJobsForLead(leadId: string): Promise<void> {
 export async function pollDueJobs(limit = 50): Promise<ScheduledJob[]> {
   await connectDB();
   const now = new Date();
+
+  // Reset stale RUNNING jobs that have been running for more than 2 minutes
+  // — these are jobs that started but the process crashed before completing.
+  const staleThreshold = new Date(now.getTime() - 2 * 60 * 1000);
+  await Job.updateMany(
+    { status: 'RUNNING', updatedAt: { $lte: staleThreshold } },
+    { status: 'SCHEDULED' },
+  );
+
+  // Find all SCHEDULED jobs whose runAt is <= now (overdue or exactly due).
   const jobs = await Job.find({ status: 'SCHEDULED', runAt: { $lte: now } })
     .sort({ runAt: 1 })
     .limit(limit);
