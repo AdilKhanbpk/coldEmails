@@ -224,9 +224,8 @@ export async function POST(req: NextRequest) {
           timezone: tz,
         });
       } catch (jobError) {
-        // Roll back — delete the lead we just created.
         await UserLead.findByIdAndDelete(lead._id);
-        console.error('[leads/POST] Failed to create Agenda jobs, lead rolled back:', jobError);
+        console.error('[leads/POST] Failed to create jobs, lead rolled back:', jobError);
         return NextResponse.json(
           { error: 'Failed to schedule outreach jobs. Lead was not saved. Please try again.' },
           { status: 500 }

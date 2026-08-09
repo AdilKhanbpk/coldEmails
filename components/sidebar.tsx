@@ -26,7 +26,7 @@ const navItems = [
   { label: 'Analytics', href: '/analytics', icon: BarChart3, enabled: true },
   { label: 'Outreach Types', href: '/outreach-types', icon: ListChecks, enabled: true },
   { label: 'Leads', href: '/leads', icon: Users, enabled: true },
-  { label: 'Inbox', href: '/settings/inboxes', icon: Mail, enabled: true },
+  { label: 'Inboxes', href: '/inboxes', icon: Mail, enabled: true },
   { label: 'Team', href: '/team', icon: UserCog, enabled: true },
   { label: 'Settings', href: '/settings', icon: Settings, enabled: true },
 ];

@@ -70,10 +70,8 @@ export async function scheduleJob(
 
 export async function cancelJobsForLead(leadId: string): Promise<void> {
   await connectDB();
-  await Job.updateMany(
-    { leadId, status: { $in: ['SCHEDULED', 'RUNNING'] } },
-    { status: 'CANCELLED' },
-  );
+  // Delete all pending/running jobs for this lead outright.
+  await Job.deleteMany({ leadId, status: { $in: ['SCHEDULED', 'RUNNING'] } });
 }
 
 export async function pollDueJobs(limit = 50): Promise<ScheduledJob[]> {
@@ -102,7 +100,8 @@ export async function markJobRunning(jobId: string): Promise<boolean> {
 
 export async function markJobCompleted(jobId: string): Promise<void> {
   await connectDB();
-  await Job.findByIdAndUpdate(jobId, { status: 'COMPLETED' });
+  // Delete completed jobs — they're done, no need to keep them.
+  await Job.findByIdAndDelete(jobId);
 }
 
 export async function markJobFailed(jobId: string): Promise<number> {

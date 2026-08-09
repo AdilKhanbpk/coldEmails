@@ -7,7 +7,10 @@ export interface IJob {
   runAt: Date;
   status: string;
   attempts: number;
+  stepNumber?: number;
   schedulerJobId?: string;
+  preGeneratedSubject?: string;
+  preGeneratedBody?: string;
   createdAt: Date;
 }
 
@@ -18,7 +21,10 @@ const jobSchema = new mongoose.Schema<IJob>({
   runAt: { type: Date, required: true, index: true },
   status: { type: String, default: 'SCHEDULED', index: true },
   attempts: { type: Number, default: 0 },
+  stepNumber: { type: Number },
   schedulerJobId: { type: String },
+  preGeneratedSubject: { type: String },
+  preGeneratedBody: { type: String },
   createdAt: { type: Date, default: Date.now },
 });
 
