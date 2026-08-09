@@ -24,7 +24,6 @@ import { createTrackedHtmlBody } from './email-tracking';
 import { handleReplyAction } from './reply-handler';
 
 const MAX_ATTEMPTS = 3;
-const BACKOFF_BASE_MS = 5 * 60 * 1000;
 
 export async function processJob(jobId: string): Promise<boolean> {
   const acquired = await markJobRunning(jobId);
@@ -44,8 +43,7 @@ export async function processJob(jobId: string): Promise<boolean> {
 
   // Skip terminal leads — delete all their pending jobs too.
   if (['BOUNCED', 'UNSUBSCRIBED', 'NOT_INTERESTED'].includes(lead.status)) {
-    await cancelJobsForLead(lead._id.toString());
-    await markJobCompleted(jobId); // deletes this job
+    await cancelJobsForLead(lead._id.toString()); // deletes ALL jobs including this one
     return true;
   }
 
@@ -197,15 +195,38 @@ export async function processJob(jobId: string): Promise<boolean> {
 
   const htmlBody = createTrackedHtmlBody(emailBody, (message._id as string).toString());
 
-  // ── Send email ───────────────────────────────────────────────────────────
+  // ── Send email (with token refresh retry on AuthError) ──────────────────
+  const sendWithRetry = async () => {
+    try {
+      return await sendEmail(inbox, {
+        to: lead.email,
+        from: inbox.emailAddress,
+        subject: emailSubject,
+        text: emailBody,
+        html: htmlBody,
+      });
+    } catch (err) {
+      if (!(err instanceof AuthError)) throw err;
+
+      // Token expired — force a refresh by calling Gmail/Outlook token endpoint
+      // directly, save the new token, then retry once with the fresh inbox.
+      const freshInbox = await Inbox.findById((inbox as any)._id).lean();
+      if (!freshInbox) throw err;
+
+      // Re-attempt with the freshly loaded inbox (email-sender auto-refreshes
+      // via oauth2Client 'tokens' event and saves back to DB).
+      return await sendEmail(freshInbox as any, {
+        to: lead.email,
+        from: inbox.emailAddress,
+        subject: emailSubject,
+        text: emailBody,
+        html: htmlBody,
+      });
+    }
+  };
+
   try {
-    const result = await sendEmail(inbox, {
-      to: lead.email,
-      from: inbox.emailAddress,
-      subject: emailSubject,
-      text: emailBody,
-      html: htmlBody,
-    });
+    const result = await sendWithRetry();
 
     await Message.findByIdAndUpdate(message._id, {
       providerMessageId: result.providerMessageId,
@@ -218,7 +239,7 @@ export async function processJob(jobId: string): Promise<boolean> {
       status: 'IN_PROGRESS',
     });
 
-    await incrementInboxSentCount(inbox._id.toString());
+    await incrementInboxSentCount((inbox as any)._id.toString());
 
     // Job is done — delete it from the database.
     await markJobCompleted(jobId);
@@ -230,25 +251,23 @@ export async function processJob(jobId: string): Promise<boolean> {
 
     if (error instanceof BounceError) {
       await UserLead.findByIdAndUpdate(lead._id, { status: 'BOUNCED' });
-      await cancelJobsForLead(lead._id.toString());
-      await markJobCompleted(jobId); // delete this job too
+      await cancelJobsForLead(lead._id.toString()); // deletes ALL jobs including this one
       await createNotification(job.userId.toString(), 'bounce', `Email to ${lead.email} bounced.`, lead._id.toString());
       return true;
     }
 
     if (error instanceof AuthError) {
-      await Inbox.findByIdAndUpdate(inbox._id, { status: 'EXPIRED' });
-      await cancelJobsForLead(lead._id.toString());
-      await markJobFailed(jobId);
+      await Inbox.findByIdAndUpdate((inbox as any)._id, { status: 'EXPIRED' });
+      // Requeue this job 5 minutes later — user may reconnect inbox soon.
+      await requeueJob(jobId, new Date(Date.now() + 5 * 60 * 1000));
       await createNotification(job.userId.toString(), 'inbox_expired', `Inbox ${inbox.emailAddress} expired. Reconnect in Settings.`, lead._id.toString());
       return true;
     }
 
-    // Generic failure — retry with exponential backoff up to MAX_ATTEMPTS.
+    // Generic failure — requeue 5 minutes later, up to MAX_ATTEMPTS.
     const attempts = await markJobFailed(jobId);
     if (attempts < MAX_ATTEMPTS) {
-      const backoff = BACKOFF_BASE_MS * Math.pow(2, attempts - 1);
-      await requeueJob(jobId, new Date(Date.now() + backoff));
+      await requeueJob(jobId, new Date(Date.now() + 5 * 60 * 1000));
     } else {
       await createNotification(job.userId.toString(), 'send_failed', `Failed to send email to ${lead.email} after ${MAX_ATTEMPTS} attempts.`, lead._id.toString());
     }
@@ -258,6 +277,23 @@ export async function processJob(jobId: string): Promise<boolean> {
 
 async function createNotification(userId: string, type: string, message: string, leadId: string) {
   await Notification.create({ userId, type, message, leadId });
+}
+
+function isAutoReply(subject: string, body: string): boolean {
+  const text = `${subject} ${body}`.toLowerCase();
+  return (
+    text.includes('out of office') ||
+    text.includes('auto-reply') ||
+    text.includes('automatic reply') ||
+    text.includes('autoreply') ||
+    text.includes('i am away') ||
+    text.includes('i am out') ||
+    text.includes('on vacation') ||
+    text.includes('on leave') ||
+    text.includes('do not reply') ||
+    text.includes('noreply') ||
+    text.includes('no-reply')
+  );
 }
 
 export async function processDueJobs(limit = 50): Promise<{ processed: number; skipped: number }> {
