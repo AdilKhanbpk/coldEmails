@@ -2,7 +2,6 @@ import { connectDB } from './mongodb';
 import Job from '../models/Job';
 import User from '../models/User';
 import UserLead from '../models/UserLead';
-import OutreachType from '../models/OutreachType';
 import Conversation from '../models/Conversation';
 import Message from '../models/Message';
 import Notification from '../models/Notification';
@@ -19,11 +18,55 @@ import {
   pollDueJobs,
 } from './scheduler';
 import { sendEmail, AuthError, BounceError } from './email-sender';
-import { generateFullSequence, decideReplyAction, type ReplyDecision } from './ai-worker';
+import { generateFullSequence, generateOutreachMessage, decideReplyAction } from './ai-worker';
 import { createTrackedHtmlBody } from './email-tracking';
 import { handleReplyAction } from './reply-handler';
 
 const MAX_ATTEMPTS = 3;
+
+// ─── Notification helpers ─────────────────────────────────────────────────────
+
+interface ErrorDetails {
+  errorType?: string;
+  errorMessage?: string;
+  stack?: string;
+  jobType?: string;
+  stepNumber?: number;
+  inboxEmail?: string;
+  leadEmail?: string;
+  attemptNumber?: number;
+  nextRetryAt?: Date;
+}
+
+async function notify(
+  userId: string,
+  type: string,
+  message: string,
+  leadId: string,
+  errorDetails?: ErrorDetails,
+) {
+  try {
+    await Notification.create({ userId, type, message, leadId, errorDetails });
+  } catch {
+    // Never let notification failure break the main flow
+  }
+}
+
+function extractError(error: unknown): { errorType: string; errorMessage: string; stack?: string } {
+  if (error instanceof Error) {
+    return {
+      errorType: error.constructor.name || 'Error',
+      errorMessage: error.message,
+      stack: error.stack,
+    };
+  }
+  return {
+    errorType: 'UnknownError',
+    errorMessage: String(error),
+  };
+}
+
+// ─── Main job processor ───────────────────────────────────────────────────────
 
 export async function processJob(jobId: string): Promise<boolean> {
   const acquired = await markJobRunning(jobId);
@@ -41,9 +84,13 @@ export async function processJob(jobId: string): Promise<boolean> {
     return true;
   }
 
-  // Skip terminal leads — delete all their pending jobs too.
+  const leadId = lead._id.toString();
+  const userId = job.userId.toString();
+  const jobType = job.type;
+
+  // Skip terminal leads
   if (['BOUNCED', 'UNSUBSCRIBED', 'NOT_INTERESTED'].includes(lead.status)) {
-    await cancelJobsForLead(lead._id.toString()); // deletes ALL jobs including this one
+    await cancelJobsForLead(leadId);
     return true;
   }
 
@@ -59,16 +106,14 @@ export async function processJob(jobId: string): Promise<boolean> {
     return true;
   }
 
-  // Respect quiet hours — requeue 1 hour later instead of skipping.
+  // Respect quiet hours
   if (isWithinQuietHours(lead.timezone ?? 'UTC')) {
-    const nextRun = new Date(Date.now() + 60 * 60 * 1000);
-    await requeueJob(jobId, nextRun);
+    await requeueJob(jobId, new Date(Date.now() + 60 * 60 * 1000));
     return false;
   }
 
-  const inbox = await getInboxForUser(job.userId.toString());
+  const inbox = await getInboxForUser(userId);
   if (!inbox) {
-    // No inbox available today — requeue for tomorrow morning.
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     tomorrow.setHours(9, 0, 0, 0);
@@ -76,12 +121,10 @@ export async function processJob(jobId: string): Promise<boolean> {
     return false;
   }
 
-  // Determine which step this job represents.
-  // Job type is "send_first_email" (step 1) or "send_followup_N" (step N).
   const stepNumber = (job as any).stepNumber
-    ?? (job.type === 'send_first_email' ? 1 : parseInt(job.type.replace('send_followup_', ''), 10) || 1);
+    ?? (jobType === 'send_first_email' ? 1 : parseInt(jobType.replace('send_followup_', ''), 10) || 1);
 
-  // Guard: don't send the same step twice.
+  // Guard: don't send the same step twice
   const alreadySent = await Message.findOne({ leadId: lead._id, step: stepNumber, status: 'SENT' }).lean();
   if (alreadySent) {
     await markJobCompleted(jobId);
@@ -89,98 +132,86 @@ export async function processJob(jobId: string): Promise<boolean> {
   }
 
   // ── Generate email content ───────────────────────────────────────────────
-  // For send_first_email: generate the FULL sequence in one AI call so each
-  // followup email is contextually aware of all previous emails.
-  // The generated sequence is stored in sibling followup job documents.
-  //
-  // For send_followup_N: the content was pre-stored by send_first_email.
-  // If missing (edge case), fall back to generating just this step.
 
-  let emailSubject: string;
-  let emailBody: string;
+  let emailSubject = '';
+  let emailBody = '';
+  let aiError: unknown = null;
 
-  if (job.type === 'send_first_email') {
+  if (jobType === 'send_first_email') {
     const sequenceSteps = outreachType.sequenceSteps as { stepNumber: number; delayDays: number }[];
     const totalSteps = sequenceSteps.length || 1;
 
     try {
       const sequence = await generateFullSequence(
-        lead._id.toString(),
-        job.userId.toString(),
+        leadId,
+        userId,
         outreachType._id.toString(),
         totalSteps,
       );
 
-      // Use the first email for this job.
       emailSubject = sequence[0].subject;
       emailBody = sequence[0].body;
 
-      // Store followup content in their job documents so they don't need AI.
+      // Store followup content in sibling job docs
       const sortedSteps = [...sequenceSteps].sort((a, b) => a.stepNumber - b.stepNumber);
       for (let i = 1; i < sortedSteps.length; i++) {
         const followupStep = sortedSteps[i];
         const followupContent = sequence[i];
         if (!followupContent) continue;
-
         await Job.findOneAndUpdate(
-          {
-            leadId: lead._id,
-            userId: job.userId,
-            type: `send_followup_${followupStep.stepNumber}`,
-            status: 'SCHEDULED',
-          },
-          {
-            $set: {
-              preGeneratedSubject: followupContent.subject,
-              preGeneratedBody: followupContent.body,
-            },
-          },
+          { leadId: lead._id, userId: job.userId, type: `send_followup_${followupStep.stepNumber}`, status: 'SCHEDULED' },
+          { $set: { preGeneratedSubject: followupContent.subject, preGeneratedBody: followupContent.body } },
         );
       }
-    } catch {
-      // AI failed — use fallback content
-      emailBody = (outreachType.exampleEmails as string[])[0] || `Hello, reaching out from your network.`;
+    } catch (err) {
+      aiError = err;
+      const errInfo = extractError(err);
+      // Notify user that AI failed but we used fallback
+      await notify(userId, 'ai_error', `AI failed to generate email for ${lead.companyName} (step ${stepNumber}). Using fallback content. Error: ${errInfo.errorMessage}`, leadId, {
+        ...errInfo,
+        jobType,
+        stepNumber,
+        leadEmail: lead.email,
+      });
+      emailBody = (outreachType.exampleEmails as string[])[0] || 'Hello, reaching out about a potential opportunity.';
       emailSubject = `Outreach to ${lead.companyName}`;
     }
   } else {
-    // Followup job — use pre-generated content if available.
     const jobDoc = await Job.findById(jobId).lean() as any;
     if (jobDoc?.preGeneratedSubject && jobDoc?.preGeneratedBody) {
       emailSubject = jobDoc.preGeneratedSubject;
       emailBody = jobDoc.preGeneratedBody;
     } else {
-      // Fallback: generate just this step.
       try {
-        const { generateOutreachMessage } = await import('./ai-worker');
-        const content = await generateOutreachMessage(
-          lead._id.toString(),
-          job.userId.toString(),
-          outreachType._id.toString(),
-          stepNumber,
-        );
+        const content = await generateOutreachMessage(leadId, userId, outreachType._id.toString(), stepNumber);
         emailSubject = content.subject;
         emailBody = content.body;
-      } catch {
-        emailBody = `Following up on our previous conversation.`;
+      } catch (err) {
+        aiError = err;
+        const errInfo = extractError(err);
+        await notify(userId, 'ai_error', `AI failed to generate followup email for ${lead.companyName} (step ${stepNumber}). Using fallback. Error: ${errInfo.errorMessage}`, leadId, {
+          ...errInfo,
+          jobType,
+          stepNumber,
+          leadEmail: lead.email,
+        });
+        emailBody = 'Following up on our previous conversation.';
         emailSubject = `Re: Outreach to ${lead.companyName}`;
       }
     }
   }
 
   // ── Ensure conversation exists ───────────────────────────────────────────
+
   let conversationId = lead.conversationId;
   if (!conversationId) {
-    const conv = await Conversation.create({
-      leadId: lead._id,
-      userId: job.userId,
-      status: 'ACTIVE',
-      lastActivity: new Date(),
-    });
+    const conv = await Conversation.create({ leadId: lead._id, userId: job.userId, status: 'ACTIVE', lastActivity: new Date() });
     conversationId = conv._id;
     await UserLead.findByIdAndUpdate(lead._id, { conversationId });
   }
 
   // ── Create message record ────────────────────────────────────────────────
+
   const message = await Message.create({
     conversationId,
     leadId: lead._id,
@@ -196,6 +227,7 @@ export async function processJob(jobId: string): Promise<boolean> {
   const htmlBody = createTrackedHtmlBody(emailBody, (message._id as string).toString());
 
   // ── Send email (with token refresh retry on AuthError) ──────────────────
+
   const sendWithRetry = async () => {
     try {
       return await sendEmail(inbox, {
@@ -207,14 +239,9 @@ export async function processJob(jobId: string): Promise<boolean> {
       });
     } catch (err) {
       if (!(err instanceof AuthError)) throw err;
-
-      // Token expired — force a refresh by calling Gmail/Outlook token endpoint
-      // directly, save the new token, then retry once with the fresh inbox.
+      // Token expired — reload fresh inbox (email-sender saved new token via 'tokens' event)
       const freshInbox = await Inbox.findById((inbox as any)._id).lean();
       if (!freshInbox) throw err;
-
-      // Re-attempt with the freshly loaded inbox (email-sender auto-refreshes
-      // via oauth2Client 'tokens' event and saves back to DB).
       return await sendEmail(freshInbox as any, {
         to: lead.email,
         from: inbox.emailAddress,
@@ -240,44 +267,69 @@ export async function processJob(jobId: string): Promise<boolean> {
     });
 
     await incrementInboxSentCount((inbox as any)._id.toString());
-
-    // Job is done — delete it from the database.
     await markJobCompleted(jobId);
+
+    // ✅ Success notification
+    const stepLabel = jobType === 'send_first_email' ? 'First email' : `Followup ${stepNumber}`;
+    await notify(userId, 'email_sent',
+      `${stepLabel} sent to ${lead.companyName} (${lead.email}). Subject: "${emailSubject}"${aiError ? ' [AI fallback used]' : ''}`,
+      leadId,
+      { jobType, stepNumber, inboxEmail: inbox.emailAddress, leadEmail: lead.email },
+    );
+
     return true;
 
   } catch (error) {
-    // Delete the unsent message record on failure.
     await Message.findByIdAndDelete(message._id);
+
+    const errInfo = extractError(error);
+    const stepLabel = jobType === 'send_first_email' ? 'First email' : `Followup ${stepNumber}`;
 
     if (error instanceof BounceError) {
       await UserLead.findByIdAndUpdate(lead._id, { status: 'BOUNCED' });
-      await cancelJobsForLead(lead._id.toString()); // deletes ALL jobs including this one
-      await createNotification(job.userId.toString(), 'bounce', `Email to ${lead.email} bounced.`, lead._id.toString());
+      await cancelJobsForLead(leadId);
+      await notify(userId, 'bounce',
+        `${stepLabel} to ${lead.companyName} (${lead.email}) bounced permanently. Lead marked as BOUNCED and all future jobs cancelled.`,
+        leadId,
+        { ...errInfo, jobType, stepNumber, inboxEmail: inbox.emailAddress, leadEmail: lead.email },
+      );
       return true;
     }
 
     if (error instanceof AuthError) {
       await Inbox.findByIdAndUpdate((inbox as any)._id, { status: 'EXPIRED' });
-      // Requeue this job 5 minutes later — user may reconnect inbox soon.
-      await requeueJob(jobId, new Date(Date.now() + 5 * 60 * 1000));
-      await createNotification(job.userId.toString(), 'inbox_expired', `Inbox ${inbox.emailAddress} expired. Reconnect in Settings.`, lead._id.toString());
+      const nextRetryAt = new Date(Date.now() + 5 * 60 * 1000);
+      await requeueJob(jobId, nextRetryAt);
+      await notify(userId, 'inbox_expired',
+        `Inbox ${inbox.emailAddress} authentication expired. ${stepLabel} to ${lead.companyName} failed. Job requeued for 5 minutes. Please reconnect your inbox in Settings.`,
+        leadId,
+        { ...errInfo, jobType, stepNumber, inboxEmail: inbox.emailAddress, leadEmail: lead.email, nextRetryAt },
+      );
       return true;
     }
 
-    // Generic failure — requeue 5 minutes later, up to MAX_ATTEMPTS.
+    // Generic failure
     const attempts = await markJobFailed(jobId);
     if (attempts < MAX_ATTEMPTS) {
-      await requeueJob(jobId, new Date(Date.now() + 5 * 60 * 1000));
+      const nextRetryAt = new Date(Date.now() + 5 * 60 * 1000);
+      await requeueJob(jobId, nextRetryAt);
+      await notify(userId, 'send_failed',
+        `${stepLabel} to ${lead.companyName} (${lead.email}) failed (attempt ${attempts}/${MAX_ATTEMPTS}). Retrying in 5 minutes. Error: ${errInfo.errorMessage}`,
+        leadId,
+        { ...errInfo, jobType, stepNumber, inboxEmail: inbox.emailAddress, leadEmail: lead.email, attemptNumber: attempts, nextRetryAt },
+      );
     } else {
-      await createNotification(job.userId.toString(), 'send_failed', `Failed to send email to ${lead.email} after ${MAX_ATTEMPTS} attempts.`, lead._id.toString());
+      await notify(userId, 'send_failed',
+        `${stepLabel} to ${lead.companyName} (${lead.email}) failed after ${MAX_ATTEMPTS} attempts and will not be retried. Error: ${errInfo.errorMessage}`,
+        leadId,
+        { ...errInfo, jobType, stepNumber, inboxEmail: inbox.emailAddress, leadEmail: lead.email, attemptNumber: attempts },
+      );
     }
     return true;
   }
 }
 
-async function createNotification(userId: string, type: string, message: string, leadId: string) {
-  await Notification.create({ userId, type, message, leadId });
-}
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function isAutoReply(subject: string, body: string): boolean {
   const text = `${subject} ${body}`.toLowerCase();
@@ -296,6 +348,8 @@ function isAutoReply(subject: string, body: string): boolean {
   );
 }
 
+// ─── Batch processor (called by cron-job.org endpoint) ───────────────────────
+
 export async function processDueJobs(limit = 50): Promise<{ processed: number; skipped: number }> {
   const jobs = await pollDueJobs(limit);
   let processed = 0;
@@ -313,6 +367,8 @@ export async function processDueJobs(limit = 50): Promise<{ processed: number; s
 
   return { processed, skipped };
 }
+
+// ─── Incoming reply processor ─────────────────────────────────────────────────
 
 export async function processIncomingReply(
   inboxId: string,
@@ -341,9 +397,7 @@ export async function processIncomingReply(
     }
   }
 
-  if (!conversation) {
-    return;
-  }
+  if (!conversation) return;
 
   const lead = conversation.leadId || conversation.lead;
   if (!lead) return;
@@ -363,12 +417,7 @@ export async function processIncomingReply(
       aiGenerated: false,
     });
     await UserLead.findByIdAndUpdate(lead._id, { replyTag: 'OUT_OF_OFFICE' });
-    await createNotification(
-      conversation.userId.toString(),
-      'auto_reply',
-      `Auto-reply from ${lead.companyName}: ${subject}`,
-      lead._id.toString(),
-    );
+    await notify(conversation.userId.toString(), 'auto_reply', `Auto-reply from ${lead.companyName}: ${subject}`, lead._id.toString());
     return;
   }
 
@@ -387,18 +436,8 @@ export async function processIncomingReply(
   });
 
   await Conversation.findByIdAndUpdate(conversation._id, { lastActivity: new Date() });
-
-  await UserLead.findByIdAndUpdate(lead._id, {
-    status: 'REPLIED',
-    lastMessageDate: new Date(),
-  });
-
-  await createNotification(
-    conversation.userId.toString(),
-    'reply',
-    `New reply from ${lead.companyName}: ${subject}`,
-    lead._id.toString(),
-  );
+  await UserLead.findByIdAndUpdate(lead._id, { status: 'REPLIED', lastMessageDate: new Date() });
+  await notify(conversation.userId.toString(), 'reply', `New reply from ${lead.companyName}: ${subject}`, lead._id.toString());
 
   if (lead.aiEnabled) {
     const user = await User.findById(conversation.userId).select('aiPaused').lean();
@@ -407,12 +446,14 @@ export async function processIncomingReply(
     try {
       const decision = await decideReplyAction(lead._id.toString(), conversation.userId.toString(), body);
       await handleReplyAction(lead._id.toString(), conversation.userId.toString(), conversation._id.toString(), decision);
-    } catch {
-      await createNotification(
+    } catch (err) {
+      const errInfo = extractError(err);
+      await notify(
         conversation.userId.toString(),
         'ai_error',
-        `AI failed to process reply from ${lead.companyName}. Manual review needed.`,
+        `AI failed to process reply from ${lead.companyName}. Manual review needed. Error: ${errInfo.errorMessage}`,
         lead._id.toString(),
+        errInfo,
       );
     }
   }
