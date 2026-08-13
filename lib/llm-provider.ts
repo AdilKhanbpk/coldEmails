@@ -45,18 +45,13 @@ export function getChatModel(): BaseChatModel {
       });
     }
     case 'nvidia': {
-      // To switch to Nvidia NIM via OpenAI-compatible endpoint, set:
-      //   LLM_PROVIDER=nvidia
-      //   NVIDIA_API_KEY=nvapi-...
-      //   NVIDIA_MODEL=meta/llama-3.1-8b-instruct (optional)
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { ChatOpenAI } = require('@langchain/openai');
       return new ChatOpenAI({
         openAIApiKey: process.env.NVIDIA_API_KEY,
         configuration: {
           baseURL: 'https://integrate.api.nvidia.com/v1',
         },
-        model: process.env.NVIDIA_MODEL || 'meta/llama-3.1-8b-instruct',
+        model: process.env.NVIDIA_MODEL || 'nvidia/nemotron-3-ultra-550b-a55b',
         temperature: 0.7,
         maxTokens: 800,
       });
