@@ -377,6 +377,7 @@ export async function processIncomingReply(
   subject: string,
   body: string,
   providerMessageId?: string,
+  skipAI = false,
 ): Promise<void> {
   await connectDB();
 
@@ -440,21 +441,23 @@ export async function processIncomingReply(
   await notify(conversation.userId.toString(), 'reply', `New reply from ${lead.companyName}: ${subject}`, lead._id.toString());
 
   if (lead.aiEnabled) {
-    const user = await User.findById(conversation.userId).select('aiPaused').lean();
-    if (user?.aiPaused) return;
+    if (!skipAI) {
+      const user = await User.findById(conversation.userId).select('aiPaused').lean();
+      if (user?.aiPaused) return;
 
-    try {
-      const decision = await decideReplyAction(lead._id.toString(), conversation.userId.toString(), body);
-      await handleReplyAction(lead._id.toString(), conversation.userId.toString(), conversation._id.toString(), decision);
-    } catch (err) {
-      const errInfo = extractError(err);
-      await notify(
-        conversation.userId.toString(),
-        'ai_error',
-        `AI failed to process reply from ${lead.companyName}. Manual review needed. Error: ${errInfo.errorMessage}`,
-        lead._id.toString(),
-        errInfo,
-      );
+      try {
+        const decision = await decideReplyAction(lead._id.toString(), conversation.userId.toString(), body);
+        await handleReplyAction(lead._id.toString(), conversation.userId.toString(), conversation._id.toString(), decision);
+      } catch (err) {
+        const errInfo = extractError(err);
+        await notify(
+          conversation.userId.toString(),
+          'ai_error',
+          `AI failed to process reply from ${lead.companyName}. Manual review needed. Error: ${errInfo.errorMessage}`,
+          lead._id.toString(),
+          errInfo,
+        );
+      }
     }
   }
 }

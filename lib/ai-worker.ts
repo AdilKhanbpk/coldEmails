@@ -194,33 +194,31 @@ async function callLLM(ctx: EmailGenerationContext): Promise<GeneratedEmail> {
     .map((email, i) => `Example ${i + 1}:\n${email}`)
     .join('\n\n---\n\n');
 
-  const systemTemplate = ChatPromptTemplate.fromTemplate(
-    [
-      ctx.systemPrompt,
-      '',
-      'You are writing outreach emails on behalf of {businessName}.',
-      'Business description: {businessDescription}',
-      'Services offered: {services}',
-      '',
-      'Here are four example emails that demonstrate the desired tone and style.',
-      'Study the tone, structure, greeting style, sign-off, and length of these examples.',
-      'Match the voice. Do NOT copy them verbatim.',
-      '',
-      '{examples}',
-      '',
-      'CRITICAL RULES:',
-      '1. Write a personalized email for the specific lead described below.',
-      '2. Keep it concise (under 150 words).',
-      '3. Do not use placeholders like [Name] or [Company] — fill in real details.',
-      '4. Use {{first_name}}, {{company_name}}, and {{job_title}} as variables where the lead\'s name, company, or job title is known. If a value is unknown, omit it gracefully rather than guessing.',
-      '5. The subject line should be short, specific, and compelling.',
-      '6. For follow-up emails (step 2+), reference the previous email context naturally.',
-      '7. Always include a clear call-to-action.',
-      '8. If you lack information (e.g. pricing, availability, specific details), say you will confirm and follow up. NEVER invent facts, prices, or details you do not know.',
-      '9. Return ONLY a JSON object with "subject" and "body" keys. No markdown, no code fences.',
-    ].join('\n'),
-  );
-
+  // Build a clear system message (include the outreach/system-level prompt)
+  const systemMessageText = [
+    // Outreach type's system prompt provided by the user (explicitly include it)
+    ctx.systemPrompt,
+    '',
+    `You are writing outreach emails on behalf of ${ctx.businessName || 'our business'}.`,
+    `Business description: ${ctx.businessDescription || ''}`,
+    `Services offered: ${ctx.services}`,
+    '',
+    'Here are example emails that demonstrate the desired tone and style. Study them and match the voice — do NOT copy verbatim.',
+    '',
+    ctx.exampleEmails.length > 0 ? ctx.exampleEmails.map((e, i) => `Example ${i + 1}:\n${e}`).join('\n\n---\n\n') : '',
+    '',
+    'CRITICAL RULES:',
+    '1. Write a personalized email for the specific lead described in the human message below.',
+    '2. Keep it concise (under 150 words).',
+    "3. Do NOT output placeholders such as '[Name]', '[Company]', 'company name', or similar — always use the real lead information provided.",
+    '4. The subject line should be short, specific, and compelling.',
+    '5. For follow-up emails (step 2+), reference the previous email context naturally.',
+    '6. Always include a clear call-to-action.',
+    '7. If you lack specific facts, say you will confirm and follow up. NEVER invent facts or prices.',
+    '8. Return ONLY a JSON object with "subject" and "body" keys. No markdown, no code fences.',
+  ]
+    .filter(Boolean)
+    .join('\n');
   const leadInfo = [
     `Company: ${ctx.leadCompanyName}`,
     `Country: ${ctx.leadCountry}`,
@@ -238,14 +236,13 @@ async function callLLM(ctx: EmailGenerationContext): Promise<GeneratedEmail> {
 
   const userContent = `Write step ${ctx.stepNumber} of the outreach sequence for the following lead:\n\n${leadInfo}${historySection}\n\nGenerate a personalized email. Return JSON with "subject" and "body" keys.`;
 
-  const messages = await systemTemplate.formatMessages({
-    businessName: ctx.businessName,
-    businessDescription: ctx.businessDescription,
-    services: ctx.services.join(', '),
-    examples: examplesText,
-  });
-
-  messages.push(new HumanMessage(userContent));
+  // Construct messages explicitly so the lead details are obvious to the model
+  const messages = [
+    new SystemMessage(systemMessageText),
+    new HumanMessage(
+      `${userContent}\n\nLead details (use these exact values):\nCompany: ${ctx.leadCompanyName}\nEmail: ${ctx.leadEmail || ''}\nCountry: ${ctx.leadCountry || ''}\nWebsite: ${ctx.leadWebsite || ''}\nServices: ${ctx.leadServices.join(', ') || ''}`,
+    ),
+  ];
 
   const response = await model.invoke(messages);
   const content = extractContent(response);

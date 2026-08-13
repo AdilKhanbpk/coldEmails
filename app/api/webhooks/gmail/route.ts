@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { processIncomingReply } from '@/lib/email-worker';
 import { connectDB } from '@/lib/mongodb';
 import Inbox from '@/models/Inbox';
+import { pollInboxes } from '@/lib/inbox-poller';
 
 // ---------------------------------------------------------------------------
 // Gmail push notification webhook (Google Cloud Pub/Sub).
@@ -33,10 +34,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Inbox not found' }, { status: 404 });
     }
 
-    // Fetch new messages since the last historyId
-    // In production, use the Gmail API to get history changes.
-    // For now, trigger the poller for this specific inbox.
-    // The actual message fetching happens in the poller.
+    // Trigger the inbox poller immediately so we fetch and process the new messages.
+    // This is safe — the poller will skip messages already processed.
+    try {
+      await pollInboxes();
+    } catch (e) {
+      // swallow errors to avoid webhook failures
+    }
+
     return NextResponse.json({ success: true, historyId });
   } catch {
     return NextResponse.json({ error: 'Webhook processing failed' }, { status: 500 });

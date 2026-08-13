@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { processIncomingReply } from '@/lib/email-worker';
 import { connectDB } from '@/lib/mongodb';
 import Inbox from '@/models/Inbox';
+import { pollInboxes } from '@/lib/inbox-poller';
 
 // ---------------------------------------------------------------------------
 // Microsoft Graph webhook (change notifications).
@@ -41,9 +42,13 @@ export async function POST(req: NextRequest) {
 
       if (!inbox) continue;
 
-      // The actual message content is fetched via Graph API in the poller.
-      // We trigger processing which will fetch the full message.
-      // For now, log the notification — the backup poller will fetch content.
+      // Trigger the poller immediately to fetch the full message content
+      // for this inbox (poller is idempotent and will skip processed messages).
+      try {
+        await pollInboxes();
+      } catch {
+        // ignore errors in webhook path
+      }
     }
 
     return NextResponse.json({ success: true });

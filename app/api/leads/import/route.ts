@@ -5,7 +5,8 @@ import { connectDB } from '@/lib/mongodb';
 import UserLead from '@/models/UserLead';
 import OutreachType from '@/models/OutreachType';
 import { parseFile } from '@/lib/parse-file';
-import { scheduleJob, convertToUTC } from '@/lib/scheduler';
+import { scheduleJob } from '@/lib/scheduler';
+import { fromZonedTime } from 'date-fns-tz';
 
 const STANDARD_FIELDS = [
   'companyName',
@@ -142,11 +143,12 @@ export async function POST(req: NextRequest) {
 
       let preferredTime: Date;
       if (preferredTimeStr) {
-        const parsedDate = new Date(preferredTimeStr);
-        if (isNaN(parsedDate.getTime())) {
-          preferredTime = new Date();
-        } else {
-          preferredTime = parsedDate;
+        try {
+          preferredTime = fromZonedTime(preferredTimeStr, timezone || 'UTC');
+          if (isNaN(preferredTime.getTime())) throw new Error('invalid');
+        } catch {
+          const parsedDate = new Date(preferredTimeStr);
+          preferredTime = isNaN(parsedDate.getTime()) ? new Date() : parsedDate;
         }
       } else {
         preferredTime = new Date();
@@ -211,7 +213,8 @@ export async function POST(req: NextRequest) {
               outreachTypeId,
               source: 'CSV',
             });
-            const utcRunAt = convertToUTC(row.preferredTime, row.timezone);
+            // `row.preferredTime` is already a UTC Date (parsed above via fromZonedTime), use it directly
+            const utcRunAt = row.preferredTime;
             await scheduleJob(newLead._id.toString(), session.user.id, 'send_first_email', utcRunAt);
             imported++;
           }
@@ -232,7 +235,8 @@ export async function POST(req: NextRequest) {
             outreachTypeId,
             source: 'CSV',
           });
-          const utcRunAt = convertToUTC(r.preferredTime, r.timezone);
+          // `r.preferredTime` is already a Date in UTC (or safe fallback); use directly
+          const utcRunAt = r.preferredTime;
           await scheduleJob(newLead._id.toString(), session.user.id, 'send_first_email', utcRunAt);
         }
         imported += newRows.length;

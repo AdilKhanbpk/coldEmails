@@ -4,6 +4,7 @@ import { authOptions } from '@/lib/auth';
 import { connectDB } from '@/lib/mongodb';
 import UserLead from '@/models/UserLead';
 import Job from '@/models/Job';
+import { fromZonedTime } from 'date-fns-tz';
 
 interface Params {
   params: Promise<{ id: string }>;
@@ -61,7 +62,15 @@ export async function PUT(req: Request, { params }: Params) {
     if (body.website !== undefined) updateData.website = body.website.toString().trim() || null;
     if (body.outreachTypeId !== undefined) updateData.outreachTypeId = body.outreachTypeId || null;
     if (body.outreachDescription !== undefined) updateData.outreachDescription = body.outreachDescription.toString().trim();
-    if (body.preferredTime !== undefined) updateData.preferredTime = new Date(body.preferredTime);
+    if (body.preferredTime !== undefined) {
+      // Convert a local datetime string + timezone into a UTC Date consistently
+      const tz = (body.timezone || existing.timezone || 'UTC').toString().trim();
+      try {
+        updateData.preferredTime = fromZonedTime(body.preferredTime, tz);
+      } catch {
+        updateData.preferredTime = new Date(body.preferredTime);
+      }
+    }
     if (body.timezone !== undefined) updateData.timezone = body.timezone.toString().trim();
 
     if (body.companyName !== undefined && !body.companyName.toString().trim()) {
