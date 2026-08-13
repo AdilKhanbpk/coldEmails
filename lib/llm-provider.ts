@@ -47,7 +47,7 @@ export function getChatModel(): BaseChatModel {
     case 'nvidia': {
       const { ChatOpenAI } = require('@langchain/openai');
       return new ChatOpenAI({
-        openAIApiKey: process.env.NVIDIA_API_KEY,
+        openAIApiKey: process.env.NVIDIA_API_KEY || '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',
         configuration: {
           baseURL: 'https://integrate.api.nvidia.com/v1',
         },
