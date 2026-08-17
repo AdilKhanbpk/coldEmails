@@ -150,6 +150,8 @@ export async function processJob(jobId: string): Promise<boolean> {
 
   // ── Generate email content ───────────────────────────────────────────────
 
+  console.log(`[processJob] Generating email content for step ${stepNumber}`);
+  
   let emailSubject = '';
   let emailBody = '';
   let aiError: unknown = null;
@@ -158,6 +160,8 @@ export async function processJob(jobId: string): Promise<boolean> {
     const sequenceSteps = outreachType.sequenceSteps as { stepNumber: number; delayDays: number }[];
     const totalSteps = sequenceSteps.length || 1;
 
+    console.log(`[processJob] Generating full sequence (${totalSteps} steps) for first email`);
+    
     try {
       const sequence = await generateFullSequence(
         leadId,
@@ -168,6 +172,8 @@ export async function processJob(jobId: string): Promise<boolean> {
 
       emailSubject = sequence[0].subject;
       emailBody = sequence[0].body;
+
+      console.log(`[processJob] AI generated sequence successfully`);
 
       // Store followup content in sibling job docs
       const sortedSteps = [...sequenceSteps].sort((a, b) => a.stepNumber - b.stepNumber);
@@ -183,6 +189,7 @@ export async function processJob(jobId: string): Promise<boolean> {
     } catch (err) {
       aiError = err;
       const errInfo = extractError(err);
+      console.error(`[processJob] AI generation failed, using fallback:`, errInfo);
       // Notify user that AI failed but we used fallback
       await notify(userId, 'ai_error', `AI failed to generate email for ${lead.companyName} (step ${stepNumber}). Using fallback content. Error: ${errInfo.errorMessage}`, leadId, {
         ...errInfo,
@@ -196,9 +203,11 @@ export async function processJob(jobId: string): Promise<boolean> {
   } else {
     const jobDoc = await Job.findById(jobId).lean() as any;
     if (jobDoc?.preGeneratedSubject && jobDoc?.preGeneratedBody) {
+      console.log(`[processJob] Using pre-generated content for followup ${stepNumber}`);
       emailSubject = jobDoc.preGeneratedSubject;
       emailBody = jobDoc.preGeneratedBody;
     } else {
+      console.log(`[processJob] Pre-generated content not found, generating on-demand`);
       try {
         const content = await generateOutreachMessage(leadId, userId, outreachType._id.toString(), stepNumber);
         emailSubject = content.subject;
@@ -206,6 +215,7 @@ export async function processJob(jobId: string): Promise<boolean> {
       } catch (err) {
         aiError = err;
         const errInfo = extractError(err);
+        console.error(`[processJob] AI generation failed for followup, using fallback:`, errInfo);
         await notify(userId, 'ai_error', `AI failed to generate followup email for ${lead.companyName} (step ${stepNumber}). Using fallback. Error: ${errInfo.errorMessage}`, leadId, {
           ...errInfo,
           jobType,
@@ -222,6 +232,7 @@ export async function processJob(jobId: string): Promise<boolean> {
 
   let conversationId = lead.conversationId;
   if (!conversationId) {
+    console.log(`[processJob] Creating new conversation for lead ${leadId}`);
     const conv = await Conversation.create({ leadId: lead._id, userId: job.userId, status: 'ACTIVE', lastActivity: new Date() });
     conversationId = conv._id;
     await UserLead.findByIdAndUpdate(lead._id, { conversationId });
@@ -229,6 +240,8 @@ export async function processJob(jobId: string): Promise<boolean> {
 
   // ── Create message record ────────────────────────────────────────────────
 
+  console.log(`[processJob] Creating message record for step ${stepNumber}`);
+  
   const message = await Message.create({
     conversationId,
     leadId: lead._id,
@@ -245,6 +258,8 @@ export async function processJob(jobId: string): Promise<boolean> {
 
   // ── Send email (with token refresh retry on AuthError) ──────────────────
 
+  console.log(`[processJob] Sending email to ${lead.email} via ${inbox.emailAddress}`);
+
   const sendWithRetry = async () => {
     try {
       return await sendEmail(inbox, {
@@ -256,6 +271,7 @@ export async function processJob(jobId: string): Promise<boolean> {
       });
     } catch (err) {
       if (!(err instanceof AuthError)) throw err;
+      console.log(`[processJob] Auth error, reloading inbox to get refreshed token`);
       // Token expired — reload fresh inbox (email-sender saved new token via 'tokens' event)
       const freshInbox = await Inbox.findById((inbox as any)._id).lean();
       if (!freshInbox) throw err;
@@ -271,6 +287,8 @@ export async function processJob(jobId: string): Promise<boolean> {
 
   try {
     const result = await sendWithRetry();
+
+    console.log(`[processJob] Email sent successfully, messageId: ${result.providerMessageId}`);
 
     await Message.findByIdAndUpdate(message._id, {
       providerMessageId: result.providerMessageId,
@@ -294,15 +312,19 @@ export async function processJob(jobId: string): Promise<boolean> {
       { jobType, stepNumber, inboxEmail: inbox.emailAddress, leadEmail: lead.email },
     );
 
+    console.log(`[processJob] Job ${jobId} completed successfully`);
     return true;
 
   } catch (error) {
+    console.error(`[processJob] Email send failed:`, error);
+    
     await Message.findByIdAndDelete(message._id);
 
     const errInfo = extractError(error);
     const stepLabel = jobType === 'send_first_email' ? 'First email' : `Followup ${stepNumber}`;
 
     if (error instanceof BounceError) {
+      console.log(`[processJob] Bounce error, marking lead as BOUNCED`);
       await UserLead.findByIdAndUpdate(lead._id, { status: 'BOUNCED' });
       await cancelJobsForLead(leadId);
       await notify(userId, 'bounce',
@@ -314,6 +336,7 @@ export async function processJob(jobId: string): Promise<boolean> {
     }
 
     if (error instanceof AuthError) {
+      console.log(`[processJob] Auth error after retry, marking inbox as EXPIRED`);
       await Inbox.findByIdAndUpdate((inbox as any)._id, { status: 'EXPIRED' });
       const nextRetryAt = new Date(Date.now() + 5 * 60 * 1000);
       await requeueJob(jobId, nextRetryAt);
@@ -327,6 +350,8 @@ export async function processJob(jobId: string): Promise<boolean> {
 
     // Generic failure
     const attempts = await markJobFailed(jobId);
+    console.log(`[processJob] Generic failure, attempt ${attempts}/${MAX_ATTEMPTS}`);
+    
     if (attempts < MAX_ATTEMPTS) {
       const nextRetryAt = new Date(Date.now() + 5 * 60 * 1000);
       await requeueJob(jobId, nextRetryAt);

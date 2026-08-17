@@ -78,18 +78,30 @@ export async function pollDueJobs(limit = 50): Promise<ScheduledJob[]> {
   await connectDB();
   const now = new Date();
 
+  console.log(`[pollDueJobs] Checking for due jobs at ${now.toISOString()}`);
+
   // Reset stale RUNNING jobs that have been running for more than 2 minutes
   // — these are jobs that started but the process crashed before completing.
   const staleThreshold = new Date(now.getTime() - 2 * 60 * 1000);
-  await Job.updateMany(
+  const staleResult = await Job.updateMany(
     { status: 'RUNNING', updatedAt: { $lte: staleThreshold } },
     { status: 'SCHEDULED' },
   );
+  
+  if (staleResult.modifiedCount > 0) {
+    console.log(`[pollDueJobs] Reset ${staleResult.modifiedCount} stale RUNNING jobs`);
+  }
 
   // Find all SCHEDULED jobs whose runAt is <= now (overdue or exactly due).
   const jobs = await Job.find({ status: 'SCHEDULED', runAt: { $lte: now } })
     .sort({ runAt: 1 })
     .limit(limit);
+
+  console.log(`[pollDueJobs] Found ${jobs.length} due jobs (limit: ${limit})`);
+  
+  if (jobs.length > 0) {
+    console.log(`[pollDueJobs] First job runAt: ${jobs[0].runAt.toISOString()}, current time: ${now.toISOString()}`);
+  }
 
   return jobs.map((j) => ({
     jobId: (j._id as string).toString(),

@@ -71,6 +71,7 @@ async function sendViaGmail(inbox: IInbox, payload: EmailPayload): Promise<SendR
   // token, save the new one back to MongoDB so subsequent calls don't fail.
   oauth2Client.on('tokens', async (newTokens) => {
     if (newTokens.access_token && newTokens.access_token !== creds.accessToken) {
+      console.log(`[sendViaGmail] Token refreshed for ${inbox.emailAddress}`);
       try {
         await connectDB();
         const Inbox = (await import('../models/Inbox')).default;
@@ -88,8 +89,9 @@ async function sendViaGmail(inbox: IInbox, payload: EmailPayload): Promise<SendR
             updatedAt: new Date(),
           },
         );
+        console.log(`[sendViaGmail] Successfully saved refreshed token for ${inbox.emailAddress}`);
       } catch (err) {
-        console.error('[email-sender] Failed to save refreshed Gmail token:', err);
+        console.error('[sendViaGmail] Failed to save refreshed Gmail token:', err);
       }
     }
   });
@@ -110,15 +112,18 @@ async function sendViaGmail(inbox: IInbox, payload: EmailPayload): Promise<SendR
   const encoded = Buffer.from(rawMessage).toString('base64url');
 
   try {
+    console.log(`[sendViaGmail] Sending email to ${payload.to} from ${payload.from}`);
     const res = await gmail.users.messages.send({
       userId: 'me',
       requestBody: { raw: encoded },
     });
+    console.log(`[sendViaGmail] Email sent successfully, messageId: ${res.data.id}`);
     return {
       providerMessageId: res.data.id || '',
       threadId: res.data.threadId || undefined,
     };
   } catch (error) {
+    console.error(`[sendViaGmail] Send failed:`, error);
     // If the refresh token itself is invalid/revoked (invalid_grant), there's
     // nothing we can do — mark the inbox as EXPIRED so the user reconnects.
     if (isAuthError(error)) throw new AuthError('Gmail authentication failed. Token may be expired.');
@@ -150,15 +155,19 @@ async function sendViaOutlook(inbox: IInbox, payload: EmailPayload): Promise<Sen
   };
 
   try {
+    console.log(`[sendViaOutlook] Sending email to ${payload.to} from ${payload.from}`);
     await tryWithToken(creds.accessToken);
+    console.log(`[sendViaOutlook] Email sent successfully`);
     return { providerMessageId: `outlook-${Date.now()}`, threadId: undefined };
   } catch (error) {
+    console.error(`[sendViaOutlook] Send failed:`, error);
     if (!isAuthError(error)) {
       if (isBounceError(error)) throw new BounceError('Hard bounce: email address was rejected.');
       throw error;
     }
 
     // Auth failed — try refreshing the token via Microsoft OAuth
+    console.log(`[sendViaOutlook] Auth failed, attempting token refresh`);
     try {
       const tokenRes = await fetch(
         'https://login.microsoftonline.com/common/oauth2/v2.0/token',
@@ -175,11 +184,16 @@ async function sendViaOutlook(inbox: IInbox, payload: EmailPayload): Promise<Sen
         },
       );
 
-      if (!tokenRes.ok) throw new AuthError('Outlook token refresh failed.');
+      if (!tokenRes.ok) {
+        console.error(`[sendViaOutlook] Token refresh failed with status ${tokenRes.status}`);
+        throw new AuthError('Outlook token refresh failed.');
+      }
 
       const tokenData = await tokenRes.json();
       const newAccessToken: string = tokenData.access_token;
       const newRefreshToken: string = tokenData.refresh_token ?? creds.refreshToken;
+
+      console.log(`[sendViaOutlook] Token refreshed successfully for ${inbox.emailAddress}`);
 
       // Save refreshed tokens back to DB
       await connectDB();
@@ -198,10 +212,13 @@ async function sendViaOutlook(inbox: IInbox, payload: EmailPayload): Promise<Sen
         },
       );
 
+      console.log(`[sendViaOutlook] Retrying send with new token`);
       // Retry with new token
       await tryWithToken(newAccessToken);
+      console.log(`[sendViaOutlook] Email sent successfully after token refresh`);
       return { providerMessageId: `outlook-${Date.now()}`, threadId: undefined };
-    } catch {
+    } catch (refreshError) {
+      console.error(`[sendViaOutlook] Token refresh and retry failed:`, refreshError);
       throw new AuthError('Outlook authentication failed. Please reconnect your inbox.');
     }
   }
@@ -218,6 +235,7 @@ async function sendViaSMTP(inbox: IInbox, payload: EmailPayload): Promise<SendRe
   });
 
   try {
+    console.log(`[sendViaSMTP] Sending email to ${payload.to} from ${payload.from} via ${creds.host}`);
     const info = await transporter.sendMail({
       from: payload.from,
       to: payload.to,
@@ -225,11 +243,13 @@ async function sendViaSMTP(inbox: IInbox, payload: EmailPayload): Promise<SendRe
       text: payload.text,
       html: payload.html,
     });
+    console.log(`[sendViaSMTP] Email sent successfully, messageId: ${info.messageId}`);
     return {
       providerMessageId: info.messageId,
       threadId: undefined,
     };
   } catch (error) {
+    console.error(`[sendViaSMTP] Send failed:`, error);
     const msg = error instanceof Error ? error.message : String(error);
     if (msg.includes('EAUTH') || msg.includes('Invalid login') || msg.includes('authentication'))
       throw new AuthError('SMTP authentication failed. Check your credentials.');
