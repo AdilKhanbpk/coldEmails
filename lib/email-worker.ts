@@ -118,6 +118,10 @@ export async function processJob(jobId: string): Promise<boolean> {
     return true;
   }
 
+  // Determine step number early for logging and notifications
+  const stepNumber = (job as any).stepNumber
+    ?? (jobType === 'send_first_email' ? 1 : parseInt(jobType.replace('send_followup_', ''), 10) || 1);
+
   // Respect quiet hours
   if (isWithinQuietHours(lead.timezone ?? 'UTC')) {
     console.log(`[processJob] Lead ${leadId} is in quiet hours, requeuing for 1 hour`);
@@ -127,7 +131,54 @@ export async function processJob(jobId: string): Promise<boolean> {
 
   const inbox = await getInboxForUser(userId);
   if (!inbox) {
-    console.log(`[processJob] No inbox available for user ${userId}, requeuing for tomorrow`);
+    console.log(`[processJob] No CONNECTED inbox available for user ${userId}`);
+    
+    // Check if user has any inboxes at all (including EXPIRED ones)
+    const anyInbox = await Inbox.findOne({ userId }).lean();
+    
+    if (!anyInbox) {
+      // User has no inboxes configured - requeue for tomorrow
+      console.log(`[processJob] User has no inboxes configured, requeuing for tomorrow`);
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(9, 0, 0, 0);
+      await requeueJob(jobId, tomorrow);
+      
+      // Notify user once (not every time)
+      if (job.attempts === 0) {
+        await notify(userId, 'no_inbox', 
+          `Cannot send email to ${lead.companyName} - no inbox configured. Please add an inbox in Settings.`,
+          leadId,
+          { jobType, stepNumber, leadEmail: lead.email },
+        );
+      }
+      return false;
+    }
+    
+    // User has inboxes but they're all EXPIRED or at daily limit
+    const expiredInbox = await Inbox.findOne({ userId, status: 'EXPIRED' }).lean();
+    if (expiredInbox) {
+      console.log(`[processJob] All inboxes are EXPIRED for user ${userId}, marking job as FAILED`);
+      await markJobFailed(jobId);
+      
+      // Notify user that their inbox needs reconnection
+      await notify(userId, 'inbox_expired',
+        `Cannot send email to ${lead.companyName} (${lead.email}) - inbox ${expiredInbox.emailAddress} authentication expired. Please reconnect your inbox in Settings.`,
+        leadId,
+        { 
+          jobType, 
+          stepNumber, 
+          inboxEmail: expiredInbox.emailAddress, 
+          leadEmail: lead.email,
+          errorType: 'InboxExpired',
+          errorMessage: 'Inbox authentication expired',
+        },
+      );
+      return true;
+    }
+    
+    // All inboxes hit daily limit - requeue for tomorrow
+    console.log(`[processJob] All inboxes hit daily limit, requeuing for tomorrow`);
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     tomorrow.setHours(9, 0, 0, 0);
@@ -136,9 +187,6 @@ export async function processJob(jobId: string): Promise<boolean> {
   }
 
   console.log(`[processJob] Using inbox ${inbox.emailAddress} (status: ${inbox.status})`);
-
-  const stepNumber = (job as any).stepNumber
-    ?? (jobType === 'send_first_email' ? 1 : parseInt(jobType.replace('send_followup_', ''), 10) || 1);
 
   // Guard: don't send the same step twice
   const alreadySent = await Message.findOne({ leadId: lead._id, step: stepNumber, status: 'SENT' }).lean();
