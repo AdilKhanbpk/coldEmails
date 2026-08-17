@@ -70,16 +70,23 @@ function extractError(error: unknown): { errorType: string; errorMessage: string
 
 export async function processJob(jobId: string): Promise<boolean> {
   const acquired = await markJobRunning(jobId);
-  if (!acquired) return false;
+  if (!acquired) {
+    console.log(`[processJob] Job ${jobId} already acquired by another worker`);
+    return false;
+  }
 
+  console.log(`[processJob] Starting job ${jobId}`);
+  
   const job = await Job.findById(jobId).lean();
   if (!job) {
+    console.error(`[processJob] Job ${jobId} not found in database`);
     await markJobFailed(jobId);
     return true;
   }
 
   const lead = await UserLead.findById(job.leadId).populate('outreachTypeId').lean();
   if (!lead) {
+    console.error(`[processJob] Lead ${job.leadId} not found for job ${jobId}`);
     await markJobFailed(jobId);
     return true;
   }
@@ -88,32 +95,39 @@ export async function processJob(jobId: string): Promise<boolean> {
   const userId = job.userId.toString();
   const jobType = job.type;
 
+  console.log(`[processJob] Processing ${jobType} for lead ${lead.email} (${lead.companyName})`);
+
   // Skip terminal leads
   if (['BOUNCED', 'UNSUBSCRIBED', 'NOT_INTERESTED'].includes(lead.status)) {
+    console.log(`[processJob] Lead ${leadId} has terminal status ${lead.status}, cancelling all jobs`);
     await cancelJobsForLead(leadId);
     return true;
   }
 
   const outreachType = lead.outreachTypeId as any;
   if (!lead.aiEnabled || !outreachType) {
+    console.log(`[processJob] Lead ${leadId} has aiEnabled=${lead.aiEnabled}, skipping`);
     await markJobCompleted(jobId);
     return true;
   }
 
   const user = await User.findById(job.userId).select('aiPaused').lean();
   if (user?.aiPaused) {
+    console.log(`[processJob] User ${userId} has AI paused, completing job without sending`);
     await markJobCompleted(jobId);
     return true;
   }
 
   // Respect quiet hours
   if (isWithinQuietHours(lead.timezone ?? 'UTC')) {
+    console.log(`[processJob] Lead ${leadId} is in quiet hours, requeuing for 1 hour`);
     await requeueJob(jobId, new Date(Date.now() + 60 * 60 * 1000));
     return false;
   }
 
   const inbox = await getInboxForUser(userId);
   if (!inbox) {
+    console.log(`[processJob] No inbox available for user ${userId}, requeuing for tomorrow`);
     const tomorrow = new Date();
     tomorrow.setDate(tomorrow.getDate() + 1);
     tomorrow.setHours(9, 0, 0, 0);
@@ -121,12 +135,15 @@ export async function processJob(jobId: string): Promise<boolean> {
     return false;
   }
 
+  console.log(`[processJob] Using inbox ${inbox.emailAddress} (status: ${inbox.status})`);
+
   const stepNumber = (job as any).stepNumber
     ?? (jobType === 'send_first_email' ? 1 : parseInt(jobType.replace('send_followup_', ''), 10) || 1);
 
   // Guard: don't send the same step twice
   const alreadySent = await Message.findOne({ leadId: lead._id, step: stepNumber, status: 'SENT' }).lean();
   if (alreadySent) {
+    console.log(`[processJob] Step ${stepNumber} already sent for lead ${leadId}, completing job`);
     await markJobCompleted(jobId);
     return true;
   }
@@ -351,21 +368,39 @@ function isAutoReply(subject: string, body: string): boolean {
 // ─── Batch processor (called by cron-job.org endpoint) ───────────────────────
 
 export async function processDueJobs(limit = 50): Promise<{ processed: number; skipped: number }> {
-  const jobs = await pollDueJobs(limit);
-  let processed = 0;
-  let skipped = 0;
+  try {
+    await connectDB();
+    console.log('[processDueJobs] Connected to DB, polling for due jobs...');
+    
+    const jobs = await pollDueJobs(limit);
+    console.log(`[processDueJobs] Found ${jobs.length} due jobs`);
+    
+    let processed = 0;
+    let skipped = 0;
 
-  for (const job of jobs) {
-    try {
-      const result = await processJob(job.jobId);
-      if (result) processed++;
-      else skipped++;
-    } catch {
-      skipped++;
+    for (const job of jobs) {
+      try {
+        console.log(`[processDueJobs] Processing job ${job.jobId} (${job.type}) for lead ${job.leadId}`);
+        const result = await processJob(job.jobId);
+        if (result) {
+          processed++;
+          console.log(`[processDueJobs] Job ${job.jobId} processed successfully`);
+        } else {
+          skipped++;
+          console.log(`[processDueJobs] Job ${job.jobId} skipped (already acquired or requeued)`);
+        }
+      } catch (err) {
+        skipped++;
+        console.error(`[processDueJobs] Job ${job.jobId} failed:`, err);
+      }
     }
-  }
 
-  return { processed, skipped };
+    console.log(`[processDueJobs] Summary - Processed: ${processed}, Skipped: ${skipped}`);
+    return { processed, skipped };
+  } catch (err) {
+    console.error('[processDueJobs] Fatal error:', err);
+    throw err;
+  }
 }
 
 // ─── Incoming reply processor ─────────────────────────────────────────────────
