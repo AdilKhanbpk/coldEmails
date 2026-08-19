@@ -156,37 +156,39 @@ export async function processJob(jobId: string): Promise<boolean> {
     }
     
     // User has inboxes but they're all EXPIRED or at daily limit
+    // Try using an EXPIRED inbox - the token refresh logic will handle it
     const expiredInbox = await Inbox.findOne({ userId, status: 'EXPIRED' }).lean();
     if (expiredInbox) {
-      console.log(`[processJob] All inboxes are EXPIRED for user ${userId}, marking job as FAILED`);
-      await markJobFailed(jobId);
+      console.log(`[processJob] Found EXPIRED inbox ${expiredInbox.emailAddress}, will attempt to use it (token refresh will handle expired tokens)`);
+      // Use the expired inbox - sendViaGmail/sendViaOutlook will attempt token refresh
+      // If refresh succeeds, email will be sent and inbox status updated to CONNECTED
+      // If refresh fails, AuthError will be thrown and handled in the catch block below
+      const inboxToUse = expiredInbox as any;
+      console.log(`[processJob] Using EXPIRED inbox ${inboxToUse.emailAddress} - token refresh will be attempted during send`);
       
-      // Notify user that their inbox needs reconnection
-      await notify(userId, 'inbox_expired',
-        `Cannot send email to ${lead.companyName} (${lead.email}) - inbox ${expiredInbox.emailAddress} authentication expired. Please reconnect your inbox in Settings.`,
-        leadId,
-        { 
-          jobType, 
-          stepNumber, 
-          inboxEmail: expiredInbox.emailAddress, 
-          leadEmail: lead.email,
-          errorType: 'InboxExpired',
-          errorMessage: 'Inbox authentication expired',
-        },
-      );
-      return true;
+      // Continue execution with this inbox (don't return early)
+      // The send logic will handle token refresh
+    } else {
+      // All inboxes hit daily limit - requeue for tomorrow
+      console.log(`[processJob] All inboxes hit daily limit, requeuing for tomorrow`);
+      const tomorrow = new Date();
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      tomorrow.setHours(9, 0, 0, 0);
+      await requeueJob(jobId, tomorrow);
+      return false;
     }
-    
-    // All inboxes hit daily limit - requeue for tomorrow
-    console.log(`[processJob] All inboxes hit daily limit, requeuing for tomorrow`);
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    tomorrow.setHours(9, 0, 0, 0);
-    await requeueJob(jobId, tomorrow);
-    return false;
   }
 
-  console.log(`[processJob] Using inbox ${inbox.emailAddress} (status: ${inbox.status})`);
+  // Use either the CONNECTED inbox or the EXPIRED inbox (which we'll try to refresh)
+  const inboxToUse = inbox || (await Inbox.findOne({ userId, status: 'EXPIRED' }).lean()) as any;
+  
+  if (!inboxToUse) {
+    console.log(`[processJob] No inbox available at all for user ${userId}`);
+    await markJobFailed(jobId);
+    return true;
+  }
+
+  console.log(`[processJob] Using inbox ${inboxToUse.emailAddress} (status: ${inboxToUse.status})`);
 
   // Guard: don't send the same step twice
   const alreadySent = await Message.findOne({ leadId: lead._id, step: stepNumber, status: 'SENT' }).lean();
@@ -306,12 +308,12 @@ export async function processJob(jobId: string): Promise<boolean> {
 
   // ── Send email (token refresh handled inside sendViaGmail/sendViaOutlook) ──────
 
-  console.log(`[processJob] Sending email to ${lead.email} via ${inbox.emailAddress}`);
+  console.log(`[processJob] Sending email to ${lead.email} via ${inboxToUse.emailAddress}`);
 
   try {
-    const result = await sendEmail(inbox, {
+    const result = await sendEmail(inboxToUse, {
       to: lead.email,
-      from: inbox.emailAddress,
+      from: inboxToUse.emailAddress,
       subject: emailSubject,
       text: emailBody,
       html: htmlBody,
@@ -330,7 +332,7 @@ export async function processJob(jobId: string): Promise<boolean> {
       status: 'IN_PROGRESS',
     });
 
-    await incrementInboxSentCount((inbox as any)._id.toString());
+    await incrementInboxSentCount((inboxToUse as any)._id.toString());
     await markJobCompleted(jobId);
 
     // ✅ Success notification
@@ -338,7 +340,7 @@ export async function processJob(jobId: string): Promise<boolean> {
     await notify(userId, 'email_sent',
       `${stepLabel} sent to ${lead.companyName} (${lead.email}). Subject: "${emailSubject}"${aiError ? ' [AI fallback used]' : ''}`,
       leadId,
-      { jobType, stepNumber, inboxEmail: inbox.emailAddress, leadEmail: lead.email },
+      { jobType, stepNumber, inboxEmail: inboxToUse.emailAddress, leadEmail: lead.email },
     );
 
     console.log(`[processJob] Job ${jobId} completed successfully`);
@@ -359,20 +361,20 @@ export async function processJob(jobId: string): Promise<boolean> {
       await notify(userId, 'bounce',
         `${stepLabel} to ${lead.companyName} (${lead.email}) bounced permanently. Lead marked as BOUNCED and all future jobs cancelled.`,
         leadId,
-        { ...errInfo, jobType, stepNumber, inboxEmail: inbox.emailAddress, leadEmail: lead.email },
+        { ...errInfo, jobType, stepNumber, inboxEmail: inboxToUse.emailAddress, leadEmail: lead.email },
       );
       return true;
     }
 
     if (error instanceof AuthError) {
-      console.log(`[processJob] Auth error after retry, marking inbox as EXPIRED`);
-      await Inbox.findByIdAndUpdate((inbox as any)._id, { status: 'EXPIRED' });
+      console.log(`[processJob] Auth error - token refresh failed, marking inbox as EXPIRED`);
+      await Inbox.findByIdAndUpdate((inboxToUse as any)._id, { status: 'EXPIRED' });
       const nextRetryAt = new Date(Date.now() + 5 * 60 * 1000);
       await requeueJob(jobId, nextRetryAt);
       await notify(userId, 'inbox_expired',
-        `Inbox ${inbox.emailAddress} authentication expired. ${stepLabel} to ${lead.companyName} failed. Job requeued for 5 minutes. Please reconnect your inbox in Settings.`,
+        `Inbox ${inboxToUse.emailAddress} authentication failed even after token refresh attempt. ${stepLabel} to ${lead.companyName} failed. Job requeued for 5 minutes. Please reconnect your inbox in Settings.`,
         leadId,
-        { ...errInfo, jobType, stepNumber, inboxEmail: inbox.emailAddress, leadEmail: lead.email, nextRetryAt },
+        { ...errInfo, jobType, stepNumber, inboxEmail: inboxToUse.emailAddress, leadEmail: lead.email, nextRetryAt },
       );
       return true;
     }
@@ -387,13 +389,13 @@ export async function processJob(jobId: string): Promise<boolean> {
       await notify(userId, 'send_failed',
         `${stepLabel} to ${lead.companyName} (${lead.email}) failed (attempt ${attempts}/${MAX_ATTEMPTS}). Retrying in 5 minutes. Error: ${errInfo.errorMessage}`,
         leadId,
-        { ...errInfo, jobType, stepNumber, inboxEmail: inbox.emailAddress, leadEmail: lead.email, attemptNumber: attempts, nextRetryAt },
+        { ...errInfo, jobType, stepNumber, inboxEmail: inboxToUse.emailAddress, leadEmail: lead.email, attemptNumber: attempts, nextRetryAt },
       );
     } else {
       await notify(userId, 'send_failed',
         `${stepLabel} to ${lead.companyName} (${lead.email}) failed after ${MAX_ATTEMPTS} attempts and will not be retried. Error: ${errInfo.errorMessage}`,
         leadId,
-        { ...errInfo, jobType, stepNumber, inboxEmail: inbox.emailAddress, leadEmail: lead.email, attemptNumber: attempts },
+        { ...errInfo, jobType, stepNumber, inboxEmail: inboxToUse.emailAddress, leadEmail: lead.email, attemptNumber: attempts },
       );
     }
     return true;
