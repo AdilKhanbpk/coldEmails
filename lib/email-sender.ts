@@ -56,46 +56,51 @@ export async function sendEmail(inbox: IInbox, payload: EmailPayload): Promise<S
 async function sendViaGmail(inbox: IInbox, payload: EmailPayload): Promise<SendResult> {
   const creds = decryptJSON<GmailCredentials>(inbox.credentials);
 
-  const oauth2Client = new google.auth.OAuth2(
-    creds.clientId,
-    creds.clientSecret,
-    // Redirect URI not needed for token refresh — only for initial OAuth flow
-  );
+  const createOAuthClient = (accessToken: string, refreshToken: string) => {
+    const client = new google.auth.OAuth2(
+      creds.clientId,
+      creds.clientSecret,
+      // Redirect URI not needed for token refresh — only for initial OAuth flow
+    );
 
-  oauth2Client.setCredentials({
-    access_token: creds.accessToken,
-    refresh_token: creds.refreshToken,
-  });
+    client.setCredentials({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    });
 
-  // Listen for token refresh events — when Google auto-refreshes the access
-  // token, save the new one back to MongoDB so subsequent calls don't fail.
-  oauth2Client.on('tokens', async (newTokens) => {
-    if (newTokens.access_token && newTokens.access_token !== creds.accessToken) {
-      console.log(`[sendViaGmail] Token refreshed for ${inbox.emailAddress}`);
-      try {
-        await connectDB();
-        const Inbox = (await import('../models/Inbox')).default;
-        const updatedCreds: GmailCredentials = {
-          ...creds,
-          accessToken: newTokens.access_token,
-          // refresh_token is only returned on first auth — preserve existing one
-          refreshToken: newTokens.refresh_token ?? creds.refreshToken,
-        };
-        await Inbox.findOneAndUpdate(
-          { emailAddress: inbox.emailAddress, userId: inbox.userId },
-          {
-            credentials: encryptJSON(updatedCreds),
-            status: 'CONNECTED',
-            updatedAt: new Date(),
-          },
-        );
-        console.log(`[sendViaGmail] Successfully saved refreshed token for ${inbox.emailAddress}`);
-      } catch (err) {
-        console.error('[sendViaGmail] Failed to save refreshed Gmail token:', err);
+    // Listen for token refresh events — when Google auto-refreshes the access
+    // token, save the new one back to MongoDB so subsequent calls don't fail.
+    client.on('tokens', async (newTokens) => {
+      if (newTokens.access_token && newTokens.access_token !== accessToken) {
+        console.log(`[sendViaGmail] Token refreshed for ${inbox.emailAddress}`);
+        try {
+          await connectDB();
+          const Inbox = (await import('../models/Inbox')).default;
+          const updatedCreds: GmailCredentials = {
+            ...creds,
+            accessToken: newTokens.access_token,
+            // refresh_token is only returned on first auth — preserve existing one
+            refreshToken: newTokens.refresh_token ?? refreshToken,
+          };
+          await Inbox.findOneAndUpdate(
+            { emailAddress: inbox.emailAddress, userId: inbox.userId },
+            {
+              credentials: encryptJSON(updatedCreds),
+              status: 'CONNECTED',
+              updatedAt: new Date(),
+            },
+          );
+          console.log(`[sendViaGmail] Successfully saved refreshed token for ${inbox.emailAddress}`);
+        } catch (err) {
+          console.error('[sendViaGmail] Failed to save refreshed Gmail token:', err);
+        }
       }
-    }
-  });
+    });
 
+    return client;
+  };
+
+  const oauth2Client = createOAuthClient(creds.accessToken, creds.refreshToken);
   const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
   const headers = [
@@ -124,11 +129,77 @@ async function sendViaGmail(inbox: IInbox, payload: EmailPayload): Promise<SendR
     };
   } catch (error) {
     console.error(`[sendViaGmail] Send failed:`, error);
-    // If the refresh token itself is invalid/revoked (invalid_grant), there's
-    // nothing we can do — mark the inbox as EXPIRED so the user reconnects.
-    if (isAuthError(error)) throw new AuthError('Gmail authentication failed. Token may be expired.');
-    if (isBounceError(error)) throw new BounceError('Hard bounce: email address is invalid or does not exist.');
-    throw error;
+    
+    // If not an auth error, handle as before
+    if (!isAuthError(error)) {
+      if (isBounceError(error)) throw new BounceError('Hard bounce: email address is invalid or does not exist.');
+      throw error;
+    }
+
+    // Auth failed — try refreshing the token via Google OAuth
+    console.log(`[sendViaGmail] Auth failed, attempting token refresh`);
+    try {
+      const tokenRes = await fetch(
+        'https://oauth2.googleapis.com/token',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            grant_type: 'refresh_token',
+            refresh_token: creds.refreshToken,
+            client_id: creds.clientId,
+            client_secret: creds.clientSecret,
+          }),
+        },
+      );
+
+      if (!tokenRes.ok) {
+        console.error(`[sendViaGmail] Token refresh failed with status ${tokenRes.status}`);
+        throw new AuthError('Gmail token refresh failed.');
+      }
+
+      const tokenData = await tokenRes.json();
+      const newAccessToken: string = tokenData.access_token;
+      const newRefreshToken: string = tokenData.refresh_token ?? creds.refreshToken;
+
+      console.log(`[sendViaGmail] Token refreshed successfully for ${inbox.emailAddress}`);
+
+      // Save refreshed tokens back to DB
+      await connectDB();
+      const Inbox = (await import('../models/Inbox')).default;
+      const updatedCreds: GmailCredentials = {
+        ...creds,
+        accessToken: newAccessToken,
+        refreshToken: newRefreshToken,
+      };
+      await Inbox.findOneAndUpdate(
+        { emailAddress: inbox.emailAddress, userId: inbox.userId },
+        {
+          credentials: encryptJSON(updatedCreds),
+          status: 'CONNECTED',
+          updatedAt: new Date(),
+        },
+      );
+
+      console.log(`[sendViaGmail] Retrying send with new token`);
+      // Retry with new token
+      const retryOAuthClient = createOAuthClient(newAccessToken, newRefreshToken);
+      const gmailRetry = google.gmail({ version: 'v1', auth: retryOAuthClient });
+      
+      const resRetry = await gmailRetry.users.messages.send({
+        userId: 'me',
+        requestBody: { raw: encoded },
+      });
+      
+      console.log(`[sendViaGmail] Email sent successfully after token refresh, messageId: ${resRetry.data.id}`);
+      return {
+        providerMessageId: resRetry.data.id || '',
+        threadId: resRetry.data.threadId || undefined,
+      };
+    } catch (refreshError) {
+      console.error(`[sendViaGmail] Token refresh and retry failed:`, refreshError);
+      throw new AuthError('Gmail authentication failed. Please reconnect your inbox.');
+    }
   }
 }
 
