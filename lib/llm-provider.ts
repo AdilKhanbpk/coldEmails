@@ -24,8 +24,14 @@ export function getChatModel(): BaseChatModel {
     }
     case 'nvidia': {
       const { ChatOpenAI } = require('@langchain/openai');
+      const nvidiaApiKey = process.env.NVIDIA_API_KEY || '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';
+      
+      if (!nvidiaApiKey || nvidiaApiKey === '') {
+        throw new Error('NVIDIA_API_KEY is not set in environment variables');
+      }
+      
       return new ChatOpenAI({
-        openAIApiKey: process.env.NVIDIA_API_KEY || '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',
+        apiKey: nvidiaApiKey,  // Use 'apiKey' instead of 'openAIApiKey'
         configuration: {
           baseURL: 'https://integrate.api.nvidia.com/v1',
         },
