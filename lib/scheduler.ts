@@ -80,6 +80,23 @@ export async function pollDueJobs(limit = 50): Promise<ScheduledJob[]> {
 
   console.log(`[pollDueJobs] Checking for due jobs at ${now.toISOString()}`);
 
+  // First, log ALL jobs in database for debugging
+  const allJobs = await Job.find({}).select('status runAt type leadId attempts').lean();
+  console.log(`[pollDueJobs] Total jobs in database: ${allJobs.length}`);
+  if (allJobs.length > 0) {
+    const statusCounts = allJobs.reduce((acc, job) => {
+      acc[job.status] = (acc[job.status] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    console.log(`[pollDueJobs] Job status breakdown:`, statusCounts);
+    
+    // Log first few jobs with details
+    console.log(`[pollDueJobs] Sample jobs:`);
+    allJobs.slice(0, 5).forEach((job, idx) => {
+      console.log(`  ${idx + 1}. Status: ${job.status}, RunAt: ${job.runAt?.toISOString() || 'N/A'}, Type: ${job.type}, Attempts: ${job.attempts || 0}`);
+    });
+  }
+
   // Reset stale RUNNING jobs that have been running for more than 2 minutes
   // — these are jobs that started but the process crashed before completing.
   const staleThreshold = new Date(now.getTime() - 2 * 60 * 1000);
@@ -92,16 +109,35 @@ export async function pollDueJobs(limit = 50): Promise<ScheduledJob[]> {
     console.log(`[pollDueJobs] Reset ${staleResult.modifiedCount} stale RUNNING jobs`);
   }
 
-  // Find all SCHEDULED jobs whose runAt is <= now (overdue or exactly due).
-  const jobs = await Job.find({ status: 'SCHEDULED', runAt: { $lte: now } })
+  // Find all SCHEDULED and FAILED jobs whose runAt is <= now (overdue or exactly due).
+  // SCHEDULED: Jobs that are ready to run
+  // FAILED: Jobs that failed but should be retried (if runAt <= now, they're ready for retry)
+  const jobs = await Job.find({ 
+    status: { $in: ['SCHEDULED', 'FAILED'] }, 
+    runAt: { $lte: now } 
+  })
     .sort({ runAt: 1 })
     .limit(limit);
 
-  console.log(`[pollDueJobs] Found ${jobs.length} due jobs (limit: ${limit})`);
+  console.log(`[pollDueJobs] Found ${jobs.length} due jobs (SCHEDULED + FAILED with runAt <= now) (limit: ${limit})`);
   
   if (jobs.length > 0) {
-    console.log(`[pollDueJobs] First job runAt: ${jobs[0].runAt.toISOString()}, current time: ${now.toISOString()}`);
+    console.log(`[pollDueJobs] First job: status=${jobs[0].status}, runAt=${jobs[0].runAt.toISOString()}, current time=${now.toISOString()}`);
+  } else {
+    console.log(`[pollDueJobs] No due jobs found. Checking why...`);
+    const scheduledCount = await Job.countDocuments({ status: 'SCHEDULED' });
+    const failedCount = await Job.countDocuments({ status: 'FAILED' });
+    const futureJobs = await Job.countDocuments({ 
+      status: { $in: ['SCHEDULED', 'FAILED'] }, 
+      runAt: { $gt: now } 
+    });
+    console.log(`[pollDueJobs] ${scheduledCount} SCHEDULED jobs, ${failedCount} FAILED jobs, ${futureJobs} jobs scheduled for future`);
   }
+
+  // Also log summary of job statuses for debugging
+  const scheduled = jobs.filter(j => j.status === 'SCHEDULED').length;
+  const failed = jobs.filter(j => j.status === 'FAILED').length;
+  console.log(`[pollDueJobs] Breakdown: ${scheduled} SCHEDULED, ${failed} FAILED`);
 
   return jobs.map((j) => ({
     jobId: (j._id as string).toString(),
@@ -114,8 +150,8 @@ export async function pollDueJobs(limit = 50): Promise<ScheduledJob[]> {
 export async function markJobRunning(jobId: string): Promise<boolean> {
   await connectDB();
   const result = await Job.updateOne(
-    { _id: jobId, status: 'SCHEDULED' },
-    { status: 'RUNNING' },
+    { _id: jobId, status: { $in: ['SCHEDULED', 'FAILED'] } },
+    { status: 'RUNNING', updatedAt: new Date() },
   );
   return result.modifiedCount > 0;
 }
