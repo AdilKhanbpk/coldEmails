@@ -304,37 +304,18 @@ export async function processJob(jobId: string): Promise<boolean> {
 
   const htmlBody = createTrackedHtmlBody(emailBody, (message._id as string).toString());
 
-  // ── Send email (with token refresh retry on AuthError) ──────────────────
+  // ── Send email (token refresh handled inside sendViaGmail/sendViaOutlook) ──────
 
   console.log(`[processJob] Sending email to ${lead.email} via ${inbox.emailAddress}`);
 
-  const sendWithRetry = async () => {
-    try {
-      return await sendEmail(inbox, {
-        to: lead.email,
-        from: inbox.emailAddress,
-        subject: emailSubject,
-        text: emailBody,
-        html: htmlBody,
-      });
-    } catch (err) {
-      if (!(err instanceof AuthError)) throw err;
-      console.log(`[processJob] Auth error, reloading inbox to get refreshed token`);
-      // Token expired — reload fresh inbox (email-sender saved new token via 'tokens' event)
-      const freshInbox = await Inbox.findById((inbox as any)._id).lean();
-      if (!freshInbox) throw err;
-      return await sendEmail(freshInbox as any, {
-        to: lead.email,
-        from: inbox.emailAddress,
-        subject: emailSubject,
-        text: emailBody,
-        html: htmlBody,
-      });
-    }
-  };
-
   try {
-    const result = await sendWithRetry();
+    const result = await sendEmail(inbox, {
+      to: lead.email,
+      from: inbox.emailAddress,
+      subject: emailSubject,
+      text: emailBody,
+      html: htmlBody,
+    });
 
     console.log(`[processJob] Email sent successfully, messageId: ${result.providerMessageId}`);
 
