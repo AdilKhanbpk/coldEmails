@@ -3,7 +3,7 @@ import type { BaseChatModel } from '@langchain/core/language_models/chat_models'
 export type LLMProvider = 'openai' | 'anthropic' | 'nvidia';
 
 function getProvider(): LLMProvider {
-  const raw = (process.env.LLM_PROVIDER || 'openai').toLowerCase().trim();
+  const raw = (process.env.LLM_PROVIDER || 'nvidia').toLowerCase().trim();
   if (raw === 'anthropic') return 'anthropic';
   if (raw === 'nvidia') return 'nvidia';
   return 'openai';
@@ -43,12 +43,12 @@ export function getChatModel(): BaseChatModel {
     case 'openai':
     default: {
       // To switch to OpenAI, set:
-      //   LLM_PROVIDER=openai
-      //   OPENAI_API_KEY=sk-...
+      //   LLM_PROVIDER=nvidia
+      //   NVIDIA_API_KEY=sk-...
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { ChatOpenAI } = require('@langchain/openai');
       return new ChatOpenAI({
-        openAIApiKey: process.env.OPENAI_API_KEY,
+        openAIApiKey: process.env.NVIDIA_API_KEY,
         model: 'gpt-4o-mini',
         temperature: 0.7,
         maxTokens: 800,
