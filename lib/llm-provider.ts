@@ -11,6 +11,7 @@ function getProvider(): LLMProvider {
 
 export function getChatModel(): BaseChatModel {
   const provider = getProvider();
+  const timeout = parseInt(process.env.LLM_TIMEOUT || '180000', 10); // Default 2 minutes
 
   switch (provider) {
     case 'anthropic': {
@@ -43,12 +44,12 @@ export function getChatModel(): BaseChatModel {
     case 'openai':
     default: {
       // To switch to OpenAI, set:
-      //   LLM_PROVIDER=nvidia
-      //   NVIDIA_API_KEY=sk-...
+      //   LLM_PROVIDER=openai
+      //   OPENAI_API_KEY=sk-...
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       const { ChatOpenAI } = require('@langchain/openai');
       return new ChatOpenAI({
-        openAIApiKey: process.env.NVIDIA_API_KEY,
+        openAIApiKey: process.env.OPENAI_API_KEY,
         model: 'gpt-4o-mini',
         temperature: 0.7,
         maxTokens: 800,
