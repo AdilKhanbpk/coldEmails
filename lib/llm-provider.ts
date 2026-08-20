@@ -20,7 +20,8 @@ export function getChatModel(): BaseChatModel {
         anthropicApiKey: process.env.ANTHROPIC_API_KEY,
         model: 'claude-3-5-sonnet-20241022',
         temperature: 0.7,
-        maxTokens: 800,
+        maxTokens: 4000, // Increased from 800 to handle full email sequences
+        timeout,
       });
     }
     case 'nvidia': {
@@ -38,7 +39,8 @@ export function getChatModel(): BaseChatModel {
         },
         model: process.env.NVIDIA_MODEL || 'nvidia/nemotron-3-ultra-550b-a55b',
         temperature: 0.7,
-        maxTokens: 800,
+        maxTokens: 4000, // Increased from 800 to handle full email sequences
+        timeout,
       });
     }
     case 'openai':
@@ -52,7 +54,8 @@ export function getChatModel(): BaseChatModel {
         openAIApiKey: process.env.OPENAI_API_KEY,
         model: 'gpt-4o-mini',
         temperature: 0.7,
-        maxTokens: 800,
+        maxTokens: 4000, // Increased from 800 to handle full email sequences
+        timeout,
       });
     }
   }
