@@ -289,19 +289,23 @@ function parseEmailSequence(content: string, expectedCount: number): GeneratedEm
   const arr = extractJSONArray(content);
 
   if (!Array.isArray(arr)) {
-    throw new Error('AI did not return a JSON array for the sequence.');
+    // Log the actual response for debugging
+    console.error('[parseEmailSequence] AI response was not a JSON array. Raw content:', content.substring(0, 500));
+    throw new Error(`AI did not return a JSON array for the sequence. Response type: ${typeof arr}. First 200 chars: ${content.substring(0, 200)}`);
   }
 
   const emails: GeneratedEmail[] = [];
   for (let i = 0; i < arr.length; i++) {
     const item = arr[i] as Record<string, unknown>;
     if (!item?.subject || !item?.body) {
-      throw new Error(`AI sequence item ${i + 1} is missing subject or body.`);
+      console.error(`[parseEmailSequence] Item ${i + 1} is invalid:`, item);
+      throw new Error(`AI sequence item ${i + 1} is missing subject or body. Item: ${JSON.stringify(item)}`);
     }
     emails.push({ subject: item.subject as string, body: item.body as string });
   }
 
   if (emails.length < expectedCount) {
+    console.error(`[parseEmailSequence] Expected ${expectedCount} emails but got ${emails.length}`);
     throw new Error(`AI returned ${emails.length} emails but ${expectedCount} were expected.`);
   }
 
@@ -836,26 +840,51 @@ function extractJSON(text: string): Record<string, unknown> | null {
 }
 
 function extractJSONArray(text: string): unknown[] | null {
+  console.log('[extractJSONArray] Attempting to parse response, length:', text.length);
+  
+  // Try 1: Direct JSON parse
   try {
     const parsed = JSON.parse(text);
-    if (Array.isArray(parsed)) return parsed;
-  } catch { /* continue */ }
+    if (Array.isArray(parsed)) {
+      console.log('[extractJSONArray] Success: Direct JSON parse returned array with', parsed.length, 'items');
+      return parsed;
+    }
+    console.log('[extractJSONArray] Direct parse succeeded but not an array, type:', typeof parsed);
+  } catch (e) {
+    console.log('[extractJSONArray] Direct JSON parse failed:', (e as Error).message);
+  }
 
+  // Try 2: Extract from markdown code fence
   const fenceMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
   if (fenceMatch) {
+    console.log('[extractJSONArray] Found markdown code fence, attempting to parse...');
     try {
       const parsed = JSON.parse(fenceMatch[1].trim());
-      if (Array.isArray(parsed)) return parsed;
-    } catch { /* continue */ }
+      if (Array.isArray(parsed)) {
+        console.log('[extractJSONArray] Success: Code fence parse returned array with', parsed.length, 'items');
+        return parsed;
+      }
+      console.log('[extractJSONArray] Code fence parse succeeded but not an array');
+    } catch (e) {
+      console.log('[extractJSONArray] Code fence parse failed:', (e as Error).message);
+    }
   }
 
+  // Try 3: Find array pattern with regex
   const arrayMatch = text.match(/\[[\s\S]*\]/);
   if (arrayMatch) {
+    console.log('[extractJSONArray] Found array pattern, attempting to parse...');
     try {
       const parsed = JSON.parse(arrayMatch[0]);
-      if (Array.isArray(parsed)) return parsed;
-    } catch { /* continue */ }
+      if (Array.isArray(parsed)) {
+        console.log('[extractJSONArray] Success: Regex array parse returned array with', parsed.length, 'items');
+        return parsed;
+      }
+    } catch (e) {
+      console.log('[extractJSONArray] Regex array parse failed:', (e as Error).message);
+    }
   }
 
+  console.error('[extractJSONArray] All parsing attempts failed. Response preview:', text.substring(0, 300));
   return null;
 }
