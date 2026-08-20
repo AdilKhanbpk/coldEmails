@@ -6,6 +6,7 @@ import Message from '../models/Message';
 import { ChatPromptTemplate } from '@langchain/core/prompts';
 import { SystemMessage, HumanMessage } from '@langchain/core/messages';
 import { getChatModel } from './llm-provider';
+import { normalizeTextForEmail } from './text-normalizer';
 
 export interface GeneratedEmail {
   subject: string;
@@ -301,7 +302,10 @@ function parseEmailSequence(content: string, expectedCount: number): GeneratedEm
       console.error(`[parseEmailSequence] Item ${i + 1} is invalid:`, item);
       throw new Error(`AI sequence item ${i + 1} is missing subject or body. Item: ${JSON.stringify(item)}`);
     }
-    emails.push({ subject: item.subject as string, body: item.body as string });
+    emails.push({ 
+      subject: normalizeTextForEmail(item.subject as string), 
+      body: normalizeTextForEmail(item.body as string) 
+    });
   }
 
   if (emails.length < expectedCount) {
@@ -788,7 +792,10 @@ function extractContent(response: unknown): string {
 function parseEmailJSON(content: string): GeneratedEmail {
   const json = extractJSON(content);
   if (!json?.subject || !json?.body) throw new Error('AI response missing subject or body.');
-  return { subject: json.subject as string, body: json.body as string };
+  return { 
+    subject: normalizeTextForEmail(json.subject as string), 
+    body: normalizeTextForEmail(json.body as string) 
+  };
 }
 
 function parseReplyDecision(content: string): ReplyDecision {
@@ -807,8 +814,8 @@ function parseReplyDecision(content: string): ReplyDecision {
     : undefined;
   return {
     action,
-    subject: json.subject as string,
-    body: json.body as string,
+    subject: normalizeTextForEmail(json.subject as string),
+    body: normalizeTextForEmail(json.body as string),
     meetingSlots,
     tag,
   };
