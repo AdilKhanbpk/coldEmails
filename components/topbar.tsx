@@ -78,7 +78,7 @@ export function TopBar({ userName, userEmail, userRole, leads: initialLeads = []
     <>
       <header className="flex h-16 items-center justify-between border-b border-gray-200 bg-white px-4 sm:px-6">
         <div className="flex items-center gap-3">
-          <button
+          {/* <button
             onClick={() => setPaletteOpen(true)}
             className="flex items-center gap-2 rounded-md border border-gray-200 px-3 py-1.5 text-sm text-gray-400 hover:border-gray-300 hover:text-gray-600 transition-colors"
           >
@@ -87,7 +87,7 @@ export function TopBar({ userName, userEmail, userRole, leads: initialLeads = []
             <kbd className="hidden sm:flex items-center gap-0.5 rounded border border-gray-200 bg-gray-50 px-1 text-[10px] text-gray-400">
               <Command className="h-2.5 w-2.5" />K
             </kbd>
-          </button>
+          </button> */}
         </div>
 
         <div className="flex items-center gap-3">

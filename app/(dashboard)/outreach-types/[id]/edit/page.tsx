@@ -4,6 +4,7 @@ import { connectDB } from '@/lib/mongodb';
 import OutreachType from '@/models/OutreachType';
 import { redirect } from 'next/navigation';
 import { OutreachTypeForm } from '../../outreach-type-form';
+import { serializeDoc } from '@/lib/serialize';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -19,7 +20,13 @@ export default async function EditOutreachTypePage({ params }: PageProps) {
 
   if (!outreachType) redirect('/outreach-types');
 
-  const formatted = { ...outreachType, id: outreachType._id.toString() };
+  const initialData = serializeDoc({
+    name: outreachType.name,
+    systemPrompt: outreachType.systemPrompt,
+    exampleEmails: outreachType.exampleEmails || [],
+    sequenceSteps: outreachType.sequenceSteps || [],
+    active: outreachType.active ?? true,
+  });
 
-  return <OutreachTypeForm outreachType={formatted} />;
+  return <OutreachTypeForm mode="edit" typeId={id} initialData={initialData} />;
 }
