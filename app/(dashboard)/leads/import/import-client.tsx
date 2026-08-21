@@ -26,6 +26,7 @@ import {
   Cloud,
 } from 'lucide-react';
 import { toast } from 'sonner';
+import { COMMON_TIMEZONES, detectBrowserTimezone } from '@/lib/timezones';
 
 interface OutreachTypeOption {
   id: string;
@@ -78,6 +79,11 @@ export function ImportClient({ outreachTypes }: { outreachTypes: OutreachTypeOpt
   const [uploading, setUploading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState(0);
+  const [scheduledStartTime, setScheduledStartTime] = useState<string>('');
+  const detectedTz = detectBrowserTimezone();
+  const [scheduledTimezone, setScheduledTimezone] = useState<string>(detectedTz);
+
+  
 
   const handleFileUpload = useCallback(async (file: File) => {
     setUploading(true);
@@ -176,6 +182,11 @@ export function ImportClient({ outreachTypes }: { outreachTypes: OutreachTypeOpt
   };
 
   const handleImport = async () => {
+    if (!scheduledStartTime) {
+      toast.error('Please select a start date and time for sending emails.');
+      return;
+    }
+
     setStep('importing');
     setImporting(true);
     setImportProgress(0);
@@ -195,6 +206,8 @@ export function ImportClient({ outreachTypes }: { outreachTypes: OutreachTypeOpt
           mapping,
           outreachTypeId,
           duplicateMode,
+          scheduledStartTime,
+          scheduledTimezone,
         }),
       });
 
@@ -249,11 +262,10 @@ export function ImportClient({ outreachTypes }: { outreachTypes: OutreachTypeOpt
         {steps.map((s, i) => (
           <div key={s.key} className="flex items-center gap-2">
             <div
-              className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium ${
-                i <= currentStepIndex
+              className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-medium ${i <= currentStepIndex
                   ? 'bg-blue-600 text-white'
                   : 'bg-gray-100 text-gray-400'
-              }`}
+                }`}
             >
               {i + 1}
             </div>
@@ -401,7 +413,7 @@ export function ImportClient({ outreachTypes }: { outreachTypes: OutreachTypeOpt
         </Card>
       )}
 
-      {/* Step 3: Duplicate handling */}
+      {/* Step 3: Duplicate handling + Schedule Time */}
       {step === 'duplicate' && (
         <Card className="border-gray-200 shadow-sm">
           <CardContent className="p-6 space-y-6">
@@ -418,9 +430,8 @@ export function ImportClient({ outreachTypes }: { outreachTypes: OutreachTypeOpt
               onValueChange={(v) => setDuplicateMode(v as 'skip' | 'update')}
               className="space-y-3"
             >
-              <label className={`flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-colors ${
-                duplicateMode === 'skip' ? 'border-blue-300 bg-blue-50/30' : 'border-gray-200'
-              }`}>
+              <label className={`flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-colors ${duplicateMode === 'skip' ? 'border-blue-300 bg-blue-50/30' : 'border-gray-200'
+                }`}>
                 <RadioGroupItem value="skip" className="mt-1" />
                 <div>
                   <p className="text-sm font-medium text-gray-900">Skip duplicates</p>
@@ -429,9 +440,8 @@ export function ImportClient({ outreachTypes }: { outreachTypes: OutreachTypeOpt
                   </p>
                 </div>
               </label>
-              <label className={`flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-colors ${
-                duplicateMode === 'update' ? 'border-blue-300 bg-blue-50/30' : 'border-gray-200'
-              }`}>
+              <label className={`flex items-start gap-3 rounded-lg border p-4 cursor-pointer transition-colors ${duplicateMode === 'update' ? 'border-blue-300 bg-blue-50/30' : 'border-gray-200'
+                }`}>
                 <RadioGroupItem value="update" className="mt-1" />
                 <div>
                   <p className="text-sm font-medium text-gray-900">Update existing</p>
@@ -441,6 +451,61 @@ export function ImportClient({ outreachTypes }: { outreachTypes: OutreachTypeOpt
                 </div>
               </label>
             </RadioGroup>
+
+            <div className="border-t border-gray-200 pt-6 mt-6">
+              <div>
+                <h3 className="text-base font-medium text-gray-900">Schedule email start time</h3>
+                <p className="mt-1 text-sm text-gray-500">
+                  Select when the first emails should start sending. Leads will be scheduled in batches
+                  of 3 per minute to avoid rate limits (e.g., 3 leads at 11:00 PM, 3 at 11:01 PM, etc.).
+                </p>
+              </div>
+
+              <div className="mt-4 space-y-4">
+                <div className="space-y-1.5">
+                  <Label htmlFor="scheduled-time">Start date and time *</Label>
+                  <input
+                    id="scheduled-time"
+                    type="datetime-local"
+                    value={scheduledStartTime}
+                    onChange={(e) => setScheduledStartTime(e.target.value)}
+                    className="flex h-10 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm ring-offset-white file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-gray-500 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                    required
+                  />
+                  <p className="text-xs text-gray-500">
+                    This is the time when the first batch of emails will start sending
+                  </p>
+                </div>
+
+              
+                <div className="space-y-1.5">
+                  <Label htmlFor="timezone">Timezone *</Label>
+                  <Select value={scheduledTimezone} onValueChange={setScheduledTimezone}>
+                    <SelectTrigger id="timezone" className="border-gray-200">
+                      <SelectValue placeholder="Select timezone" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {COMMON_TIMEZONES.map((tz) => (
+                        <SelectItem key={tz} value={tz}>{tz}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {parsedData && scheduledStartTime && (
+                  <div className="rounded-md bg-blue-50 px-4 py-3 text-sm text-blue-700">
+                    <p className="font-medium">Scheduling preview:</p>
+                    <p className="mt-1">
+                      With {parsedData.rowCount} leads, emails will be sent over approximately{' '}
+                      {Math.ceil(parsedData.rowCount / 3)} minutes, starting at {scheduledStartTime} {scheduledTimezone}.
+                    </p>
+                    <p className="mt-1 text-xs">
+                      First 3 leads: {scheduledStartTime}, Next 3: +1 minute, Next 3: +2 minutes, etc.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
 
             <div className="flex justify-between">
               <Button variant="outline" onClick={() => setStep('mapping')} className="border-gray-200">

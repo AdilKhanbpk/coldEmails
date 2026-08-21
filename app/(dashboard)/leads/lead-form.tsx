@@ -260,7 +260,7 @@ export function LeadForm({ outreachTypes }: { outreachTypes: OutreachTypeOption[
               <div className="space-y-1.5">
                 <Label htmlFor="preferredTime">Preferred time *</Label>
                 <Input
-                  id="preferredTime"
+                  id="preferredTime" 
                   type="datetime-local"
                   value={preferredTime}
                   onChange={(e) => setPreferredTime(e.target.value)}

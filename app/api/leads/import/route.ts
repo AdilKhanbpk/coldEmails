@@ -5,7 +5,7 @@ import { connectDB } from '@/lib/mongodb';
 import UserLead from '@/models/UserLead';
 import OutreachType from '@/models/OutreachType';
 import { parseFile } from '@/lib/parse-file';
-import { scheduleJob } from '@/lib/scheduler';
+import { createLeadJobs } from '@/lib/createLeadJobs';
 import { fromZonedTime } from 'date-fns-tz';
 
 const STANDARD_FIELDS = [
@@ -27,6 +27,8 @@ interface ImportBody {
   mapping: Record<string, StandardField | 'ignore'>;
   outreachTypeId: string;
   duplicateMode: 'skip' | 'update';
+  scheduledStartTime?: string;
+  scheduledTimezone?: string;
 }
 
 interface ValidRow {
@@ -60,13 +62,16 @@ export async function POST(req: NextRequest) {
     }
 
     const body = (await req.json()) as ImportBody;
-    const { fileName, mapping, outreachTypeId, duplicateMode } = body;
+    const { fileName, mapping, outreachTypeId, duplicateMode, scheduledStartTime, scheduledTimezone } = body;
 
     if (!fileName || !body.fileContent) {
       return NextResponse.json({ error: 'File is required.' }, { status: 400 });
     }
     if (!outreachTypeId) {
       return NextResponse.json({ error: 'An outreach type is required for import.' }, { status: 400 });
+    }
+    if (!scheduledStartTime) {
+      return NextResponse.json({ error: 'Scheduled start time is required for import.' }, { status: 400 });
     }
 
     await connectDB();
@@ -179,6 +184,10 @@ export async function POST(req: NextRequest) {
     const CHUNK_SIZE = 50;
     let imported = 0;
     let updated = 0;
+    let leadIndex = 0; // Track lead position for batch scheduling
+
+    // Parse the scheduled start time with timezone
+    const baseStartTime = fromZonedTime(scheduledStartTime!, scheduledTimezone || 'UTC');
 
     for (let i = 0; i < validRows.length; i += CHUNK_SIZE) {
       const chunk = validRows.slice(i, i + CHUNK_SIZE);
@@ -213,9 +222,40 @@ export async function POST(req: NextRequest) {
               outreachTypeId,
               source: 'CSV',
             });
-            // `row.preferredTime` is already a UTC Date (parsed above via fromZonedTime), use it directly
-            const utcRunAt = row.preferredTime;
-            await scheduleJob(newLead._id.toString(), session.user.id, 'send_first_email', utcRunAt);
+
+            // Calculate batch-scheduled start time
+            // Every 3 leads get +1 minute (0-2: +0min, 3-5: +1min, 6-8: +2min, etc.)
+            const minuteOffset = Math.floor(leadIndex / 3);
+            const batchStartTime = new Date(baseStartTime.getTime() + minuteOffset * 60 * 1000);
+            leadIndex++;
+
+            // Extract preferredHour and preferredMinute from batch start time in the timezone
+            const timeParts = new Intl.DateTimeFormat('en-US', {
+              timeZone: scheduledTimezone || 'UTC',
+              hour: '2-digit',
+              minute: '2-digit',
+              hour12: false,
+            }).formatToParts(batchStartTime);
+
+            const preferredHour = parseInt(timeParts.find((p) => p.type === 'hour')?.value || '9', 10);
+            const preferredMinute = parseInt(timeParts.find((p) => p.type === 'minute')?.value || '0', 10);
+
+            // Create all jobs (first email + followups) for the new lead
+            try {
+              await createLeadJobs({
+                leadId: newLead._id.toString(),
+                userId: session.user.id,
+                firstEmailRunAt: batchStartTime,
+                sequenceSteps: outreachType.sequenceSteps as { stepNumber: number; delayDays: number }[],
+                preferredHour,
+                preferredMinute,
+                timezone: scheduledTimezone || 'UTC',
+              });
+            } catch (jobError) {
+              await UserLead.findByIdAndDelete(newLead._id);
+              console.error('[leads/import/POST] Failed to create jobs for imported lead, lead rolled back:', jobError);
+              // Continue with other leads in the batch
+            }
             imported++;
           }
         }
@@ -235,9 +275,40 @@ export async function POST(req: NextRequest) {
             outreachTypeId,
             source: 'CSV',
           });
-          // `r.preferredTime` is already a Date in UTC (or safe fallback); use directly
-          const utcRunAt = r.preferredTime;
-          await scheduleJob(newLead._id.toString(), session.user.id, 'send_first_email', utcRunAt);
+
+          // Calculate batch-scheduled start time
+          // Every 3 leads get +1 minute (0-2: +0min, 3-5: +1min, 6-8: +2min, etc.)
+          const minuteOffset = Math.floor(leadIndex / 3);
+          const batchStartTime = new Date(baseStartTime.getTime() + minuteOffset * 60 * 1000);
+          leadIndex++;
+
+          // Extract preferredHour and preferredMinute from batch start time in the timezone
+          const timeParts = new Intl.DateTimeFormat('en-US', {
+            timeZone: scheduledTimezone || 'UTC',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+          }).formatToParts(batchStartTime);
+
+          const preferredHour = parseInt(timeParts.find((p) => p.type === 'hour')?.value || '9', 10);
+          const preferredMinute = parseInt(timeParts.find((p) => p.type === 'minute')?.value || '0', 10);
+
+          // Create all jobs (first email + followups) for the new lead
+          try {
+            await createLeadJobs({
+              leadId: newLead._id.toString(),
+              userId: session.user.id,
+              firstEmailRunAt: batchStartTime,
+              sequenceSteps: outreachType.sequenceSteps as { stepNumber: number; delayDays: number }[],
+              preferredHour,
+              preferredMinute,
+              timezone: scheduledTimezone || 'UTC',
+            });
+          } catch (jobError) {
+            await UserLead.findByIdAndDelete(newLead._id);
+            console.error('[leads/import/POST] Failed to create jobs for imported lead, lead rolled back:', jobError);
+            // Continue with other leads in the batch
+          }
         }
         imported += newRows.length;
       }
