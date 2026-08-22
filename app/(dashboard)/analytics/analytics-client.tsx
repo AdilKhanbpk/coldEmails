@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
@@ -9,9 +9,10 @@ import {
   LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, Funnel, FunnelChart, LabelList,
 } from 'recharts';
-import { format, subDays } from 'date-fns';
-import { useDashboard } from '@/app/(dashboard)/DashboardContext';
-import type { OutreachType } from '@/app/(dashboard)/DashboardContext';
+import { format } from 'date-fns';
+import { useOutreachTypes } from '@/app/(dashboard)/contexts/OutreachTypesContext';
+import { useAnalytics } from '@/app/(dashboard)/contexts/AnalyticsContext';
+import type { OutreachType } from '@/app/(dashboard)/contexts/OutreachTypesContext';
 
 
 interface AnalyticsData {
@@ -34,38 +35,56 @@ interface AnalyticsData {
 }
 
 export function AnalyticsClient() {
-  const { outreachTypes } = useDashboard();
-  const [data, setData] = useState<AnalyticsData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { outreachTypes } = useOutreachTypes();
+  const { 
+    rawData,
+    loading, 
+    fetchAnalytics: contextFetchAnalytics,
+    getFilteredData,
+    refreshAnalytics 
+  } = useAnalytics();
+  
   const [outreachTypeId, setOutreachTypeId] = useState('all');
-  const [dateRange, setDateRange] = useState('30d');
+  const [dateRange, setDateRange] = useState<'7d' | '30d' | '90d'>('30d');
 
-  const fetchAnalytics = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams();
-      if (outreachTypeId !== 'all') params.set('outreachTypeId', outreachTypeId);
-      const days = dateRange === '7d' ? 7 : dateRange === '90d' ? 90 : 30;
-      const end = new Date();
-      const start = subDays(end, days);
-      params.set('startDate', start.toISOString().split('T')[0]);
-      params.set('endDate', end.toISOString().split('T')[0]);
-
-      const res = await fetch(`/api/analytics?${params.toString()}`);
-      if (res.ok) {
-        const json = await res.json();
-        setData(json);
-      }
-    } catch {
-      // silent
-    } finally {
-      setLoading(false);
-    }
-  }, [outreachTypeId, dateRange]);
-
+  // Fetch analytics when outreach type changes (new data needed)
+  // Always fetch 90d range to enable client-side date filtering
   useEffect(() => {
-    fetchAnalytics();
-  }, [fetchAnalytics]);
+    contextFetchAnalytics('90d', outreachTypeId);
+  }, [outreachTypeId, contextFetchAnalytics]);
+
+  // Get filtered data (CLIENT-SIDE date filtering only)
+  // Note: OutreachType filtering happens via API call (useEffect above)
+  const data = useMemo(() => {
+    if (!rawData) return null;
+    
+    // Get data from context (already filtered by outreach type via API)
+    const baseData = {
+      metrics: rawData.metrics,
+      sendsData: rawData.sendsData,
+      replyByType: rawData.replyByType,
+      funnel: rawData.funnel,
+    };
+    
+    // Apply CLIENT-SIDE date range filtering
+    if (dateRange !== '90d' && baseData.sendsData) {
+      const days = dateRange === '7d' ? 7 : 30;
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - days);
+      
+      const filteredSendsData = baseData.sendsData.filter((point) => {
+        const pointDate = new Date(point.date);
+        return pointDate >= cutoffDate;
+      });
+      
+      return {
+        ...baseData,
+        sendsData: filteredSendsData,
+      };
+    }
+    
+    return baseData;
+  }, [rawData, dateRange]);
 
   const metricCards = [
     { label: 'Emails Sent', value: data?.metrics.totalSent ?? 0, icon: Mail },
@@ -100,7 +119,7 @@ export function AnalyticsClient() {
           <Filter className="h-4 w-4 text-gray-400" />
           <span className="text-sm text-gray-500">Filters:</span>
         </div>
-        <Select value={dateRange} onValueChange={setDateRange}>
+        <Select value={dateRange} onValueChange={(value) => setDateRange(value as '7d' | '30d' | '90d')}>
           <SelectTrigger className="w-[140px] border-gray-200">
             <SelectValue placeholder="Date range" />
           </SelectTrigger>
@@ -116,12 +135,12 @@ export function AnalyticsClient() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Outreach Types</SelectItem>
-            {outreachTypes.map((ot: OutreachType) => (
+            {(outreachTypes || []).map((ot: OutreachType) => (
               <SelectItem key={ot.id} value={ot.id}>{ot.name}</SelectItem>
             ))}
           </SelectContent>
         </Select>
-        <Button variant="outline" size="sm" onClick={fetchAnalytics} disabled={loading} className="border-gray-200">
+        <Button variant="outline" size="sm" onClick={refreshAnalytics} disabled={loading} className="border-gray-200">
           {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Refresh'}
         </Button>
       </div>

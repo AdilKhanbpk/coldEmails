@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -20,17 +20,8 @@ import { format } from 'date-fns';
 import { SkeletonTable } from '@/components/skeletons';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { cn } from '@/lib/utils';
-
-interface OutreachType {
-  id: string;
-  name: string;
-  systemPrompt: string;
-  exampleEmails: string[];
-  sequenceSteps: { stepNumber: number; delayDays: number }[];
-  active: boolean;
-  createdAt: string;
-  _count?: { leads: number };
-}
+import { useOutreachTypes } from '@/app/(dashboard)/contexts/OutreachTypesContext';
+import type { OutreachType } from '@/app/(dashboard)/contexts/OutreachTypesContext';
 
 // ─── Small presentational helpers ──────────────────────────────────────────
 
@@ -60,29 +51,24 @@ function PageHeader({ onCreate }: { onCreate: () => void }) {
 
 export default function OutreachTypesClient() {
   const router = useRouter();
-  const [types, setTypes] = useState<OutreachType[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { 
+    outreachTypes: contextTypes, 
+    loading, 
+    fetchOutreachTypes, 
+    updateOutreachType,
+    deleteOutreachType: contextDeleteOutreachType
+  } = useOutreachTypes();
+  
   const [deleteTarget, setDeleteTarget] = useState<OutreachType | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
 
-  const fetchTypes = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/outreach-types');
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      setTypes(data);
-    } catch {
-      toast.error('Failed to load outreach types.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  // Fetch types on mount (will use cache if available)
   useEffect(() => {
-    fetchTypes();
-  }, [fetchTypes]);
+    fetchOutreachTypes();
+  }, [fetchOutreachTypes]);
+
+  const types = contextTypes || [];
 
   const goToCreate = () => router.push('/outreach-types/new');
   const goToEdit = (id: string) => router.push(`/outreach-types/${id}/edit`);
@@ -100,9 +86,8 @@ export default function OutreachTypesClient() {
         toast.error(data.error || 'Failed to toggle.');
         return;
       }
-      setTypes((prev) =>
-        prev.map((t) => (t.id === id ? { ...t, active: !currentActive } : t)),
-      );
+      // Update context cache
+      updateOutreachType(id, { active: !currentActive });
       toast.success(!currentActive ? 'Outreach type activated.' : 'Outreach type deactivated.');
     } catch {
       toast.error('Failed to toggle.');
@@ -123,7 +108,8 @@ export default function OutreachTypesClient() {
         toast.error(data.error || 'Failed to delete.');
         return;
       }
-      setTypes((prev) => prev.filter((t) => t.id !== deleteTarget.id));
+      // Update context cache
+      contextDeleteOutreachType(deleteTarget.id);
       toast.success('Outreach type deleted.');
       setDeleteTarget(null);
     } catch {
@@ -193,22 +179,22 @@ export default function OutreachTypesClient() {
                       <Switch
                         checked={t.active}
                         disabled={togglingId === t.id}
-                        onCheckedChange={() => handleToggle(t.id, t.active)}
+                        onCheckedChange={() => handleToggle(t.id, t.active ?? false)}
                         aria-label={`${t.active ? 'Deactivate' : 'Activate'} ${t.name}`}
                       />
                       {togglingId === t.id ? (
                         <Loader2 className="h-3.5 w-3.5 animate-spin text-gray-400" />
                       ) : (
-                        <StatusPill active={t.active} />
+                        <StatusPill active={t.active ?? false} />
                       )}
                     </div>
                   </TableCell>
                   <TableCell className="text-gray-600">{t._count?.leads ?? 0}</TableCell>
                   <TableCell className="text-gray-600">
-                    {t.sequenceSteps.length} step{t.sequenceSteps.length !== 1 ? 's' : ''}
+                    {t.sequenceSteps?.length ?? 0} step{(t.sequenceSteps?.length ?? 0) !== 1 ? 's' : ''}
                   </TableCell>
                   <TableCell className="whitespace-nowrap text-gray-500">
-                    {format(new Date(t.createdAt), 'MMM d, yyyy')}
+                    {t.createdAt && format(new Date(t.createdAt), 'MMM d, yyyy')}
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1">
@@ -265,7 +251,7 @@ export default function OutreachTypesClient() {
                           Updating…
                         </span>
                       ) : (
-                        <StatusPill active={t.active} />
+                        <StatusPill active={t.active ?? false} />
                       )}
                     </div>
                   </div>
@@ -273,7 +259,7 @@ export default function OutreachTypesClient() {
                 <Switch
                   checked={t.active}
                   disabled={togglingId === t.id}
-                  onCheckedChange={() => handleToggle(t.id, t.active)}
+                  onCheckedChange={() => handleToggle(t.id, t.active ?? false)}
                   aria-label={`${t.active ? 'Deactivate' : 'Activate'} ${t.name}`}
                   className="shrink-0"
                 />
@@ -285,10 +271,10 @@ export default function OutreachTypesClient() {
                   assigned
                 </span>
                 <span>
-                  <span className="font-medium text-gray-700">{t.sequenceSteps.length}</span>{' '}
-                  step{t.sequenceSteps.length !== 1 ? 's' : ''}
+                  <span className="font-medium text-gray-700">{t.sequenceSteps?.length ?? 0}</span>{' '}
+                  step{(t.sequenceSteps?.length ?? 0) !== 1 ? 's' : ''}
                 </span>
-                <span>Created {format(new Date(t.createdAt), 'MMM d, yyyy')}</span>
+                {t.createdAt && <span>Created {format(new Date(t.createdAt), 'MMM d, yyyy')}</span>}
               </div>
 
               <div className="mt-3 flex gap-2 border-t border-gray-100 pt-3">

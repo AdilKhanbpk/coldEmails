@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -40,6 +40,9 @@ import { StatusBadge, ReplyTagBadge } from '@/components/status-badge';
 import { SkeletonTable } from '@/components/skeletons';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { cn } from '@/lib/utils';
+import { useOutreachTypes } from '@/app/(dashboard)/contexts/OutreachTypesContext';
+import { useLeads } from '@/app/(dashboard)/contexts/LeadsContext';
+import React from 'react';
 
 interface Lead {
   id: string;
@@ -75,8 +78,6 @@ const SOURCE_LABELS: Record<string, string> = {
 };
 
 type SortField = 'companyName' | 'status' | 'createdAt';
-
-import { useDashboard } from '@/app/(dashboard)/DashboardContext';
 
 // ─── Small presentational helpers ──────────────────────────────────────────
 
@@ -139,15 +140,22 @@ const ADD_LEAD_ACTIONS = (
 
 // ─── Main component ─────────────────────────────────────────────────────────
 
-export function LeadsClient() {
-  const { outreachTypes } = useDashboard();
+/**
+ * LeadsClient - Memoized component for displaying and managing leads
+ * 
+ * Performance optimizations:
+ * - Wrapped with React.memo to prevent unnecessary re-renders
+ * - Uses focused OutreachTypesContext instead of monolithic DashboardContext
+ * - Memoizes all filter operations with useMemo
+ * - Wraps all event handlers with useCallback
+ * - Only re-renders when outreachTypes actually change, not on unrelated context updates
+ */
+export const LeadsClient = React.memo(function LeadsClient() {
+  const { outreachTypes } = useOutreachTypes();
+  const { leadsData, loading, fetchLeads, deleteLead } = useLeads();
   const router = useRouter();
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [initialLoadDone, setInitialLoadDone] = useState(false);
+  
   const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [total, setTotal] = useState(0);
   const [sortBy, setSortBy] = useState('createdAt');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
@@ -179,45 +187,31 @@ export function LeadsClient() {
   }, [countryInput]);
 
   const [deleteTarget, setDeleteTarget] = useState<Lead | null>(null);
-  const [deleting, setDeleting] = useState(false);
 
-  const hasActiveFilters = Boolean(
-    filters.status || filters.outreachTypeId || filters.country || filters.source,
-  );
+  // Memoize hasActiveFilters to avoid recalculation on every render
+  const hasActiveFilters = useMemo(() => Boolean(
+    filters.status || filters.outreachTypeId || filters.country || filters.source
+  ), [filters.status, filters.outreachTypeId, filters.country, filters.source]);
 
-  const fetchLeads = useCallback(async () => {
-    setLoading(true);
-    try {
-      const params = new URLSearchParams({
-        page: String(page),
-        pageSize: '20',
-        sortBy,
-        sortOrder,
-      });
-      if (filters.status) params.set('status', filters.status);
-      if (filters.outreachTypeId) params.set('outreachTypeId', filters.outreachTypeId);
-      if (filters.country) params.set('country', filters.country);
-      if (filters.source) params.set('source', filters.source);
-
-      const res = await fetch(`/api/leads?${params}`);
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      setLeads(data.leads);
-      setTotalPages(data.pagination.totalPages);
-      setTotal(data.pagination.total);
-    } catch {
-      toast.error('Failed to load leads.');
-    } finally {
-      setLoading(false);
-      setInitialLoadDone(true);
-    }
-  }, [page, sortBy, sortOrder, filters]);
-
+  // Fetch leads from context (which caches the data)
   useEffect(() => {
-    fetchLeads();
-  }, [fetchLeads]);
+    fetchLeads({
+      page,
+      pageSize: 20,
+      sortBy,
+      sortOrder,
+      ...filters,
+    });
+  }, [page, sortBy, sortOrder, filters, fetchLeads]);
 
-  const handleSort = (field: string) => {
+  // Extract data from context
+  const leads = leadsData?.leads || [];
+  const total = leadsData?.pagination.total || 0;
+  const totalPages = leadsData?.pagination.totalPages || 1;
+  const initialLoadDone = leadsData !== null || !loading;
+
+  // Wrap all event handlers with useCallback for stable references
+  const handleSort = useCallback((field: string) => {
     if (sortBy === field) {
       setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
     } else {
@@ -225,36 +219,31 @@ export function LeadsClient() {
       setSortOrder('desc');
     }
     setPage(1);
-  };
+  }, [sortBy, sortOrder]);
 
-  const handleFilterChange = (key: string, value: string) => {
+  const handleFilterChange = useCallback((key: string, value: string) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
     setPage(1);
-  };
+  }, []);
 
-  const clearFilters = () => {
+  const clearFilters = useCallback(() => {
     setFilters({ status: '', outreachTypeId: '', country: '', source: '' });
     setCountryInput('');
     setPage(1);
-  };
+  }, []);
 
-  const handleDelete = async () => {
+  const handleDelete = useCallback(async () => {
     if (!deleteTarget) return;
-    setDeleting(true);
     try {
-      const res = await fetch(`/api/leads/${deleteTarget.id}`, { method: 'DELETE' });
-      if (!res.ok) throw new Error();
-      toast.success('Lead deleted.');
+      await deleteLead(deleteTarget.id);
       setDeleteTarget(null);
-      fetchLeads();
     } catch {
-      toast.error('Failed to delete lead.');
-    } finally {
-      setDeleting(false);
+      // Error toast is handled by deleteLead in context
     }
-  };
+  }, [deleteTarget, deleteLead]);
 
-  const rowNavProps = (lead: Lead) => ({
+  // Memoize rowNavProps to avoid creating new objects on every render
+  const rowNavProps = useCallback((lead: Lead) => ({
     onClick: () => router.push(`/leads/${lead.id}`),
     onKeyDown: (e: React.KeyboardEvent) => {
       if (e.key === 'Enter' || e.key === ' ') {
@@ -265,12 +254,19 @@ export function LeadsClient() {
     tabIndex: 0,
     role: 'button' as const,
     'aria-label': `View ${lead.companyName}`,
-  });
+  }), [router]);
 
   // True empty state: no leads exist at all, and no filters are applied.
-  const isTrulyEmpty = initialLoadDone && !loading && total === 0 && !hasActiveFilters;
+  const isTrulyEmpty = useMemo(() => 
+    initialLoadDone && !loading && total === 0 && !hasActiveFilters,
+    [initialLoadDone, loading, total, hasActiveFilters]
+  );
+  
   // Filters produced zero matches — different from having no leads at all.
-  const isFilteredEmpty = initialLoadDone && !loading && total === 0 && hasActiveFilters;
+  const isFilteredEmpty = useMemo(() => 
+    initialLoadDone && !loading && total === 0 && hasActiveFilters,
+    [initialLoadDone, loading, total, hasActiveFilters]
+  );
 
   if (loading && !initialLoadDone) {
     return (
@@ -335,7 +331,7 @@ export function LeadsClient() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="all">All outreach types</SelectItem>
-              {outreachTypes.map((t) => (
+              {(outreachTypes || []).map((t) => (
                 <SelectItem key={t.id} value={t.id}>
                   {t.name}
                 </SelectItem>
@@ -555,7 +551,7 @@ export function LeadsClient() {
       />
     </div>
   );
-}
+});
 
 // ─── Page header ────────────────────────────────────────────────────────────
 

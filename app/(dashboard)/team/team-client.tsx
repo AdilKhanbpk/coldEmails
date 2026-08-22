@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -13,36 +13,8 @@ import {
 import { Loader2, UserPlus, Trash2, Shield, Activity, Users, Copy, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { useTeam } from '@/app/(dashboard)/contexts/TeamContext';
 type Role = string;
-
-interface TeamMember {
-  id: string;
-  name: string;
-  email: string;
-  role: Role;
-  plan: string;
-  status: string;
-  createdAt: string;
-}
-
-interface Invitation {
-  id: string;
-  email: string;
-  role: Role;
-  token: string;
-  status: string;
-  createdAt: string;
-}
-
-interface ActivityLog {
-  id: string;
-  action: string;
-  entityType: string;
-  entityId: string | null;
-  details: string | null;
-  createdAt: string;
-  user: { name: string; email: string };
-}
 
 const ROLE_LABELS: Record<string, string> = {
   ADMIN: 'Admin',
@@ -59,10 +31,18 @@ const ROLE_STYLES: Record<string, string> = {
 };
 
 export function TeamClient({ currentRole }: { currentRole: Role }) {
-  const [members, setMembers] = useState<TeamMember[]>([]);
-  const [invitations, setInvitations] = useState<Invitation[]>([]);
-  const [activity, setActivity] = useState<ActivityLog[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    members: contextMembers,
+    invitations: contextInvitations,
+    activity: contextActivity,
+    loading,
+    fetchTeam,
+    updateMemberRole: contextUpdateRole,
+    removeMember: contextRemoveMember,
+    addInvitation: contextAddInvitation,
+    refreshTeam,
+  } = useTeam();
+  
   const [showInvite, setShowInvite] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<Role>('MEMBER');
@@ -72,31 +52,15 @@ export function TeamClient({ currentRole }: { currentRole: Role }) {
 
   const canManage = currentRole === 'ADMIN';
 
-  const fetchTeam = useCallback(async () => {
-    try {
-      const [teamRes, activityRes] = await Promise.all([
-        fetch('/api/team'),
-        fetch('/api/team/activity'),
-      ]);
-      if (teamRes.ok) {
-        const data = await teamRes.json();
-        setMembers(data.members || []);
-        setInvitations(data.invitations || []);
-      }
-      if (activityRes.ok) {
-        const data = await activityRes.json();
-        setActivity(data.logs || []);
-      }
-    } catch {
-      // silent
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  // Fetch team data on mount (will use cache if available)
   useEffect(() => {
     fetchTeam();
   }, [fetchTeam]);
+
+  // Use context data or empty arrays
+  const members = contextMembers || [];
+  const invitations = contextInvitations || [];
+  const activity = contextActivity || [];
 
   const handleInvite = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -116,7 +80,14 @@ export function TeamClient({ currentRole }: { currentRole: Role }) {
       toast.success('Invitation sent.');
       setInviteResult(data.inviteUrl);
       setInviteEmail('');
-      fetchTeam();
+      
+      // Add to context cache
+      if (data.invitation) {
+        contextAddInvitation(data.invitation);
+      } else {
+        // Refresh to get the new invitation
+        refreshTeam();
+      }
     } catch {
       toast.error('Failed to send invitation.');
     } finally {
@@ -136,7 +107,9 @@ export function TeamClient({ currentRole }: { currentRole: Role }) {
         return;
       }
       toast.success('Role updated.');
-      fetchTeam();
+      
+      // Update context cache
+      contextUpdateRole(userId, role);
     } catch {
       toast.error('Failed to update role.');
     }
@@ -151,7 +124,9 @@ export function TeamClient({ currentRole }: { currentRole: Role }) {
         return;
       }
       toast.success('Member removed.');
-      fetchTeam();
+      
+      // Update context cache
+      contextRemoveMember(userId);
     } catch {
       toast.error('Failed to remove member.');
     }

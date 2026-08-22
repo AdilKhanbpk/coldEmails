@@ -96,9 +96,12 @@ export function InboxesView({ inboxes }: { inboxes: InboxItem[] }) {
     inboxes.length > 0 ? inboxes[0] : null,
   );
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
-  const [leads, setLeads] = useState<Lead[]>([]);
-  const [messages, setMessages] = useState<Message[]>([]);
+  
+  // Cache leads by inboxId to prevent redundant API calls
+  const [leadsCache, setLeadsCache] = useState<Record<string, Lead[]>>({});
   const [leadsLoading, setLeadsLoading] = useState(false);
+  const fetchingRef = useRef<Set<string>>(new Set()); // Track which inboxes are currently being fetched
+  const [messages, setMessages] = useState<Message[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
 
   // Which pane is active. On mobile this drives a 3-level drill-down
@@ -115,26 +118,52 @@ export function InboxesView({ inboxes }: { inboxes: InboxItem[] }) {
   const [sending, setSending] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // Get leads from cache for selected inbox
+  const leads = selectedInbox ? (leadsCache[selectedInbox.id] || []) : [];
+
   // ── Load leads when inbox is selected ────────────────────────────────────
   const fetchLeads = useCallback(async (inboxId: string) => {
+    // Check cache first
+    if (leadsCache[inboxId]) {
+      // Cache hit - no API call needed
+      return;
+    }
+
+    // Check if already fetching this inbox
+    if (fetchingRef.current.has(inboxId)) {
+      return; // Already fetching, skip
+    }
+
+    // Mark as fetching
+    fetchingRef.current.add(inboxId);
+    
     setLeadsLoading(true);
     setSelectedLead(null);
     setMessages([]);
+    
     try {
       const res = await fetch(`/api/inboxes/${inboxId}/leads`);
       if (!res.ok) throw new Error();
       const data = await res.json();
-      setLeads(data.leads ?? []);
+      
+      // Update cache for this inbox
+      setLeadsCache((prev) => ({
+        ...prev,
+        [inboxId]: data.leads ?? [],
+      }));
     } catch {
       toast.error('Failed to load leads for this inbox.');
-      setLeads([]);
     } finally {
       setLeadsLoading(false);
+      // Remove from fetching set
+      fetchingRef.current.delete(inboxId);
     }
-  }, []);
+  }, [leadsCache]);
 
   useEffect(() => {
-    if (selectedInbox) fetchLeads(selectedInbox.id);
+    if (selectedInbox) {
+      fetchLeads(selectedInbox.id);
+    }
   }, [selectedInbox, fetchLeads]);
 
   // ── Load messages when lead is selected ──────────────────────────────────
@@ -215,6 +244,21 @@ export function InboxesView({ inboxes }: { inboxes: InboxItem[] }) {
       setSubject('');
       setComposeOpen(false);
       fetchMessages(selectedLead.id);
+      
+      // Update lead's lastMessageDate in cache
+      setLeadsCache((prev) => {
+        const inboxLeads = prev[selectedInbox.id];
+        if (!inboxLeads) return prev;
+        
+        return {
+          ...prev,
+          [selectedInbox.id]: inboxLeads.map((lead) =>
+            lead.id === selectedLead.id
+              ? { ...lead, lastMessageDate: new Date().toISOString() }
+              : lead
+          ),
+        };
+      });
     } catch {
       toast.error('Failed to send email.');
     } finally {

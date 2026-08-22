@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -19,15 +19,10 @@ import {
 import { format, formatDistanceToNowStrict } from 'date-fns';
 import Link from 'next/link';
 import { cn } from '@/lib/utils';
-
-interface Notification {
-  id: string;
-  type: string;
-  message: string;
-  leadId: string | null;
-  read: boolean;
-  createdAt: string;
-}
+import { useNotifications } from '@/app/(dashboard)/contexts/NotificationsContext';
+import { useMeetings } from '@/app/(dashboard)/contexts/MeetingsContext';
+import { useConditionalPolling } from '@/lib/hooks/useConditionalPolling';
+import React from 'react';
 
 interface Meeting {
   id: string;
@@ -72,56 +67,60 @@ function formatNotifTime(iso: string) {
 
 // ─── Main component ─────────────────────────────────────────────────────────
 
-export function DashboardUpdates() {
-  const [notifications, setNotifications] = useState<Notification[]>([]);
-  const [meetings, setMeetings] = useState<Meeting[]>([]);
+/**
+ * DashboardUpdates - Memoized component for notifications and meetings
+ * 
+ * Performance optimizations:
+ * - Wrapped with React.memo to prevent unnecessary re-renders
+ * - Uses NotificationsContext for notification data (with smart polling)
+ * - Meetings poll independently with useConditionalPolling (45s interval)
+ * - All handlers wrapped with useCallback for stable references
+ * - Notification data now comes from context (no local polling needed)
+ */
+export const DashboardUpdates = React.memo(function DashboardUpdates() {
+  // Get notifications from context (context handles polling internally)
+  const { 
+    notifications, 
+    unreadCount, 
+    markAsRead, 
+    markAllAsRead 
+  } = useNotifications();
+  
+  // Get meetings from context (with caching)
+  const { meetings: contextMeetings, fetchMeetings: contextFetchMeetings } = useMeetings();
+  
   const [showNotifPanel, setShowNotifPanel] = useState(false);
-  const [notifLoading, setNotifLoading] = useState(true);
   const [tab, setTab] = useState<Tab>('all');
   const [markingAllRead, setMarkingAllRead] = useState(false);
 
   const panelRef = useRef<HTMLDivElement>(null);
 
-  const fetchNotifications = useCallback(async (isInitial = false) => {
-    if (isInitial) setNotifLoading(true);
-    try {
-      const res = await fetch('/api/notifications');
-      if (res.ok) {
-        const data = await res.json();
-        setNotifications(data.notifications || []);
-      }
-    } catch {
-      // silent
-    } finally {
-      if (isInitial) setNotifLoading(false);
-    }
-  }, []);
-
+  // Wrap context fetch for polling - it will use cache if available
   const fetchMeetings = useCallback(async () => {
     try {
-      const res = await fetch('/api/meetings');
-      if (res.ok) {
-        const data = await res.json();
-        setMeetings(data.meetings || []);
-      }
-    } catch {
-      // silent
+      await contextFetchMeetings();
+    } catch (error) {
+      // Throw to trigger exponential backoff
+      throw error;
     }
-  }, []);
+  }, [contextFetchMeetings]);
 
-  useEffect(() => {
-    fetchNotifications(true);
-    fetchMeetings();
-    // Poll for live updates every 15 seconds
-    const interval = setInterval(() => {
-      fetchNotifications(false);
-      fetchMeetings();
-    }, 15000);
-    return () => clearInterval(interval);
-  }, [fetchNotifications, fetchMeetings]);
+  // Smart polling for meetings: 45-second interval (increased from 15s)
+  // Automatically pauses when tab is inactive
+  useConditionalPolling(fetchMeetings, 45000);
+
+  // Initial fetch (will use cache if available)
+  React.useEffect(() => {
+    fetchMeetings().catch(() => {
+      // Error handling is done in fetchMeetings
+    });
+  }, [fetchMeetings]);
+  
+  // Use context meetings or empty array
+  const meetings = contextMeetings || [];
 
   // Close on outside click / Escape
-  useEffect(() => {
+  React.useEffect(() => {
     if (!showNotifPanel) return;
     const handleClick = (e: MouseEvent) => {
       if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
@@ -140,12 +139,11 @@ export function DashboardUpdates() {
   }, [showNotifPanel]);
 
   // Reset to the "All" tab whenever the panel is reopened
-  useEffect(() => {
+  React.useEffect(() => {
     if (showNotifPanel) setTab('all');
   }, [showNotifPanel]);
 
-  const unreadCount = notifications.filter((n) => !n.read).length;
-  const readCount = notifications.length - unreadCount;
+  const readCount = useMemo(() => notifications.length - unreadCount, [notifications.length, unreadCount]);
 
   const visibleNotifications = useMemo(() => {
     if (tab === 'unread') return notifications.filter((n) => !n.read);
@@ -153,47 +151,21 @@ export function DashboardUpdates() {
     return notifications;
   }, [notifications, tab]);
 
-  const markAsRead = async (id: string) => {
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
-    try {
-      await fetch('/api/notifications', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id }),
-      });
-    } catch {
-      fetchNotifications(false);
-    }
-  };
-
-  const markAllAsRead = async () => {
-    const unreadIds = notifications.filter((n) => !n.read).map((n) => n.id);
-    if (unreadIds.length === 0) return;
+  // Wrap markAllAsRead with loading state management
+  const handleMarkAllAsRead = useCallback(async () => {
     setMarkingAllRead(true);
-    setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
     try {
-      await Promise.all(
-        unreadIds.map((id) =>
-          fetch('/api/notifications', {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id }),
-          }),
-        ),
-      );
-    } catch {
-      // ignore individual failures; next poll will reconcile
+      await markAllAsRead();
     } finally {
       setMarkingAllRead(false);
-      fetchNotifications(false);
     }
-  };
+  }, [markAllAsRead]);
 
-  const tabs: { key: Tab; label: string; count: number }[] = [
+  const tabs: { key: Tab; label: string; count: number }[] = useMemo(() => [
     { key: 'all', label: 'All', count: notifications.length },
     { key: 'unread', label: 'Unread', count: unreadCount },
     { key: 'read', label: 'Read', count: readCount },
-  ];
+  ], [notifications.length, unreadCount, readCount]);
 
   return (
     <>
@@ -221,7 +193,7 @@ export function DashboardUpdates() {
             <div className="flex shrink-0 items-center justify-between border-b border-gray-100 px-4 py-3">
               <span className="text-sm font-semibold text-gray-900">Notifications</span>
               <button
-                onClick={markAllAsRead}
+                onClick={handleMarkAllAsRead}
                 disabled={unreadCount === 0 || markingAllRead}
                 className="flex items-center gap-1 rounded-md px-1.5 py-1 text-xs font-medium text-blue-600 transition-colors hover:bg-blue-50 disabled:cursor-not-allowed disabled:text-gray-300 disabled:hover:bg-transparent"
               >
@@ -263,11 +235,7 @@ export function DashboardUpdates() {
 
             {/* List */}
             <ScrollArea className="h-[22rem]">
-              {notifLoading ? (
-                <div className="flex flex-col items-center justify-center gap-2 px-4 py-14 text-center">
-                  <Loader2 className="h-5 w-5 animate-spin text-gray-300" />
-                </div>
-              ) : visibleNotifications.length === 0 ? (
+              {visibleNotifications.length === 0 ? (
                 <div className="flex flex-col items-center justify-center gap-2 px-4 py-14 text-center">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gray-100">
                     {tab === 'unread' ? (
@@ -425,4 +393,4 @@ export function DashboardUpdates() {
       )}
     </>
   );
-}
+});

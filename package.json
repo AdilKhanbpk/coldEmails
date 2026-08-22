@@ -9,7 +9,10 @@
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest",
-    "test:run": "vitest run"
+    "test:run": "vitest run",
+    "analyze": "cross-env ANALYZE=true next build",
+    "analyze:server": "cross-env ANALYZE=true BUNDLE_ANALYZE=server next build",
+    "analyze:browser": "cross-env ANALYZE=true BUNDLE_ANALYZE=browser next build"
   },
   "dependencies": {
     "@auth/mongodb-adapter": "^3.11.3",
@@ -96,11 +99,16 @@
   },
   "devDependencies": {
     "@next/bundle-analyzer": "^16.2.12",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/react-hooks": "^8.0.1",
     "@types/bcryptjs": "^2.4.6",
     "@types/nodemailer": "^8.0.1",
     "@types/papaparse": "^5.5.2",
     "@vitest/ui": "^4.1.11",
+    "cross-env": "^10.1.0",
     "fast-check": "^4.9.0",
+    "jsdom": "^30.0.1",
     "ts-node": "^10.9.2",
     "vitest": "^4.1.11"
   }

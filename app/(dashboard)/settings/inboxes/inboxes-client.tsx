@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -15,18 +15,8 @@ import { toast } from 'sonner';
 import { Skeleton } from '@/components/skeletons';
 import { ConfirmDialog } from '@/components/confirm-dialog';
 import { useRouter } from 'next/navigation';
-
-interface Inbox {
-  id: string;
-  provider: string;
-  emailAddress: string;
-  status: string;
-  dailySendingCap: number;
-  warmupThrottle: boolean;
-  sentToday: number;
-  sentDate: string | null;
-  createdAt: string;
-}
+import { useInboxes } from '@/app/(dashboard)/contexts/InboxesContext';
+import type { Inbox } from '@/app/(dashboard)/contexts/InboxesContext';
 
 const PROVIDER_LABELS: Record<string, string> = { GMAIL: 'Gmail', OUTLOOK: 'Outlook', SMTP: 'SMTP' };
 const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
@@ -37,8 +27,16 @@ const STATUS_CONFIG: Record<string, { label: string; className: string }> = {
 };
 
 export function InboxesClient() {
-  const [inboxes, setInboxes] = useState<Inbox[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Use context for inbox data
+  const { 
+    inboxes: contextInboxes, 
+    loading, 
+    fetchInboxes, 
+    disconnectInbox: contextDisconnectInbox,
+    updateInboxSettings: contextUpdateSettings,
+    refreshInboxes
+  } = useInboxes();
+  
   const [showSMTP, setShowSMTP] = useState(false);
   const [settingsInbox, setSettingsInbox] = useState<Inbox | null>(null);
   const [smtpHost, setSmtpHost] = useState('');
@@ -63,20 +61,7 @@ export function InboxesClient() {
     window.location.href = '/api/oauth/microsoft';
   };
 
-  const fetchInboxes = useCallback(async () => {
-    setLoading(true);
-    try {
-      const res = await fetch('/api/inboxes');
-      if (!res.ok) throw new Error();
-      const data = await res.json();
-      setInboxes(data);
-    } catch {
-      toast.error('Failed to load inboxes.');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
+  // Fetch inboxes on mount (will use cache if available)
   useEffect(() => {
     fetchInboxes();
 
@@ -87,11 +72,13 @@ export function InboxesClient() {
     if (success) {
       toast.success('Inbox connected successfully.');
       router.replace('/settings/inboxes');
+      // Refresh to get new inbox
+      refreshInboxes();
     } else if (error) {
       toast.error(`Connection failed: ${error}`);
       router.replace('/settings/inboxes');
     }
-  }, [fetchInboxes, router]);
+  }, [fetchInboxes, refreshInboxes, router]);
 
   const handleTestSMTP = async () => {
     setTesting(true);
@@ -126,18 +113,18 @@ export function InboxesClient() {
       toast.success('SMTP inbox connected.');
       setShowSMTP(false);
       setSmtpHost(''); setSmtpPort('587'); setSmtpUsername(''); setSmtpPassword(''); setSmtpSecure(false);
-      fetchInboxes();
+      // Refresh to get new inbox
+      refreshInboxes();
     } catch { toast.error('Failed to connect inbox.'); }
     finally { setSaving(false); }
   };
 
   const handleDisconnect = async (inboxId: string) => {
     try {
-      const res = await fetch(`/api/inboxes/${inboxId}`, { method: 'DELETE' });
-      if (!res.ok) { toast.error('Failed to disconnect inbox.'); return; }
-      setInboxes((prev) => prev.filter((i) => i.id !== inboxId));
-      toast.success('Inbox disconnected.');
-    } catch { toast.error('Failed to disconnect inbox.'); }
+      await contextDisconnectInbox(inboxId);
+    } catch {
+      // Error already handled by context
+    }
   };
 
   const openSettings = (inbox: Inbox) => {
@@ -150,18 +137,20 @@ export function InboxesClient() {
     if (!settingsInbox) return;
     setSavingSettings(true);
     try {
-      const res = await fetch(`/api/inboxes/${settingsInbox.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ dailySendingCap: dailyCap, warmupThrottle: warmup }),
+      await contextUpdateSettings(settingsInbox.id, {
+        dailySendingCap: dailyCap,
+        warmupThrottle: warmup,
       });
-      if (!res.ok) { toast.error('Failed to save settings.'); setSavingSettings(false); return; }
-      toast.success('Inbox settings saved.');
       setSettingsInbox(null);
-      fetchInboxes();
-    } catch { toast.error('Failed to save settings.'); }
-    finally { setSavingSettings(false); }
+    } catch {
+      // Error already handled by context
+    } finally {
+      setSavingSettings(false);
+    }
   };
+  
+  // Use context inboxes or empty array
+  const inboxes = contextInboxes || [];
 
   if (loading) {
     return (

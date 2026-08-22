@@ -1,6 +1,4 @@
-'use client';
-
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,6 +7,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Send, Loader2, Bot, User, Mail, Clock } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { useConditionalPolling } from '@/lib/hooks/useConditionalPolling';
+import React from 'react';
 
 interface Message {
   id: string;
@@ -30,7 +30,17 @@ interface Meeting {
   proposedSlots: string[] | null;
 }
 
-export function ConversationView({
+/**
+ * ConversationView - Memoized component for displaying lead conversations
+ * 
+ * Performance optimizations:
+ * - Wrapped with React.memo to prevent unnecessary re-renders
+ * - Uses smart polling with useConditionalPolling (30s interval, pauses on tab inactive)
+ * - Memoizes role icon and label functions
+ * - Implements proper cleanup for polling on unmount
+ * - Reduced polling from 10s to 30s for better performance
+ */
+export const ConversationView = React.memo(function ConversationView({
   leadId,
   aiEnabled,
 }: {
@@ -52,9 +62,12 @@ export function ConversationView({
       if (res.ok) {
         const data = await res.json();
         setMessages(data.messages || []);
+      } else {
+        throw new Error('Failed to fetch messages');
       }
-    } catch {
-      // silent fail for polling
+    } catch (error) {
+      // Silent fail for polling, but throw to trigger exponential backoff
+      throw error;
     }
   }, [leadId]);
 
@@ -70,14 +83,24 @@ export function ConversationView({
     }
   }, [leadId]);
 
-  useEffect(() => {
-    Promise.all([fetchMessages(), fetchMeetings()]).finally(() => setLoading(false));
-    // Poll for new messages every 10 seconds (live updates without manual refresh)
-    const interval = setInterval(fetchMessages, 10000);
-    return () => clearInterval(interval);
+  // Smart polling with useConditionalPolling:
+  // - 30-second interval (increased from 10s)
+  // - Automatically pauses when tab is inactive
+  // - Resumes when tab becomes active
+  // - Implements exponential backoff on errors
+  useConditionalPolling(fetchMessages, 30000);
+  useConditionalPolling(fetchMeetings, 30000);
+
+  // Initial load
+  React.useEffect(() => {
+    Promise.all([fetchMessages(), fetchMeetings()])
+      .catch(() => {
+        // Errors are handled in individual fetch functions
+      })
+      .finally(() => setLoading(false));
   }, [fetchMessages, fetchMeetings]);
 
-  const handleSendManual = async (e: React.FormEvent) => {
+  const handleSendManual = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!content.trim()) return;
     setSending(true);
@@ -101,9 +124,9 @@ export function ConversationView({
     } finally {
       setSending(false);
     }
-  };
+  }, [content, subject, leadId, fetchMessages]);
 
-  const handleStopAi = async () => {
+  const handleStopAi = useCallback(async () => {
     setTogglingAi(true);
     try {
       const res = await fetch(`/api/leads/${leadId}/stop-ai`, { method: 'POST' });
@@ -118,9 +141,9 @@ export function ConversationView({
     } finally {
       setTogglingAi(false);
     }
-  };
+  }, [leadId]);
 
-  const handleResumeAi = async () => {
+  const handleResumeAi = useCallback(async () => {
     setTogglingAi(true);
     try {
       const res = await fetch(`/api/leads/${leadId}/resume-ai`, { method: 'POST' });
@@ -135,9 +158,9 @@ export function ConversationView({
     } finally {
       setTogglingAi(false);
     }
-  };
+  }, [leadId]);
 
-  const handleConfirmMeeting = async (meetingId: string, slot: string) => {
+  const handleConfirmMeeting = useCallback(async (meetingId: string, slot: string) => {
     try {
       const res = await fetch(`/api/leads/${leadId}/meetings`, {
         method: 'POST',
@@ -154,9 +177,9 @@ export function ConversationView({
     } catch {
       toast.error('Failed to confirm meeting.');
     }
-  };
+  }, [leadId, fetchMeetings]);
 
-  const handleCancelMeeting = async (meetingId: string) => {
+  const handleCancelMeeting = useCallback(async (meetingId: string) => {
     try {
       const res = await fetch(`/api/leads/${leadId}/meetings`, {
         method: 'PATCH',
@@ -172,19 +195,20 @@ export function ConversationView({
     } catch {
       toast.error('Failed to cancel meeting.');
     }
-  };
+  }, [leadId, fetchMeetings]);
 
-  const roleIcon = (role: string) => {
+  // Memoize role icon and label functions to avoid recreation on every render
+  const roleIcon = useMemo(() => (role: string) => {
     if (role === 'ASSISTANT') return <Bot className="h-4 w-4 text-blue-600" />;
     if (role === 'OWNER') return <User className="h-4 w-4 text-gray-600" />;
     return <Mail className="h-4 w-4 text-gray-500" />;
-  };
+  }, []);
 
-  const roleLabel = (role: string) => {
+  const roleLabel = useMemo(() => (role: string) => {
     if (role === 'ASSISTANT') return 'AI Assistant';
     if (role === 'OWNER') return 'You (Manual)';
     return 'Customer';
-  };
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -387,4 +411,4 @@ export function ConversationView({
       </Card>
     </div>
   );
-}
+});

@@ -5,7 +5,14 @@ import User from '@/models/User';
 import { redirect } from 'next/navigation';
 import { Sidebar } from '@/components/sidebar';
 import { TopBar } from '@/components/topbar';
-import { DashboardProvider } from './DashboardContext';
+import { UserProvider } from './contexts/UserContext';
+import { OutreachTypesProvider } from './contexts/OutreachTypesContext';
+import { NotificationsProvider } from './contexts/NotificationsContext';
+import { LeadsProvider } from './contexts/LeadsContext';
+import { InboxesProvider } from './contexts/InboxesContext';
+import { MeetingsProvider } from './contexts/MeetingsContext';
+import { AnalyticsProvider } from './contexts/AnalyticsContext';
+import { TeamProvider } from './contexts/TeamContext';
 
 export default async function DashboardLayout({
   children,
@@ -34,15 +41,39 @@ export default async function DashboardLayout({
     redirect('/onboarding/business-profile');
   }
 
+  // Prepare initial user data for UserProvider to avoid extra fetch
+  const initialUser = {
+    id: session.user.id,
+    email: user.email,
+    name: user.name,
+    role: user.role,
+    plan: null, // Will be fetched if needed
+    status: 'ACTIVE',
+  };
+
   return (
-    <DashboardProvider>
-      <div className="flex h-screen overflow-hidden bg-gray-50">
-        <Sidebar />
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <TopBar userName={user.name} userEmail={user.email} userRole={user.role} />
-          <main className="flex-1 overflow-y-auto">{children}</main>
-        </div>
-      </div>
-    </DashboardProvider>
+    <UserProvider initialUser={initialUser}>
+      <OutreachTypesProvider>
+        <NotificationsProvider>
+          <LeadsProvider>
+            <InboxesProvider>
+              <MeetingsProvider>
+                <AnalyticsProvider>
+                  <TeamProvider>
+                    <div className="flex h-screen overflow-hidden bg-gray-50">
+                      <Sidebar />
+                      <div className="flex flex-1 flex-col overflow-hidden">
+                        <TopBar userName={user.name} userEmail={user.email} userRole={user.role} />
+                        <main className="flex-1 overflow-y-auto">{children}</main>
+                      </div>
+                    </div>
+                  </TeamProvider>
+                </AnalyticsProvider>
+              </MeetingsProvider>
+            </InboxesProvider>
+          </LeadsProvider>
+        </NotificationsProvider>
+      </OutreachTypesProvider>
+    </UserProvider>
   );
 }
