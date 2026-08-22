@@ -149,262 +149,286 @@ export function SettingsClient({ user, inboxCount }: SettingsClientProps) {
   };
 
   return (
-    <div className="mx-auto max-w-3xl px-6 py-8">
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Settings</h1>
-        <p className="mt-1 text-sm text-gray-500">
-          Manage your business profile and account preferences.
-        </p>
-      </div>
+    <div className="min-h-screen bg-[#FAF8F4]">
+      <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-10">
+        <div className="mb-8 border-b border-stone-200 pb-6 sm:mb-10">
+          <h1 className="font-serif text-[28px] font-medium tracking-tight text-stone-900 sm:text-3xl">
+            Settings
+          </h1>
+          <p className="mt-1.5 text-sm text-stone-500">
+            Manage your business profile and account preferences.
+          </p>
+        </div>
 
-      <Tabs defaultValue="business">
-        <TabsList className="bg-gray-100">
-          <TabsTrigger value="business" className="data-[state=active]:bg-white">
-            Business Profile
-          </TabsTrigger>
-          <TabsTrigger value="inboxes" className="data-[state=active]:bg-white">
-            Inboxes {inboxCount > 0 && <span className="ml-1.5 rounded bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700">{inboxCount}</span>}
-          </TabsTrigger>
-          <TabsTrigger value="ai" className="data-[state=active]:bg-white">
-            AI Controls
-          </TabsTrigger>
-          <TabsTrigger value="account" className="data-[state=active]:bg-white">
-            Account
-          </TabsTrigger>
-        </TabsList>
+        <Tabs defaultValue="business">
+          <TabsList className="h-auto flex-wrap gap-1 rounded-full bg-stone-100 p-1">
+            <TabsTrigger value="business" className="rounded-full data-[state=active]:bg-white data-[state=active]:text-stone-900 data-[state=active]:shadow-sm">
+              Business profile
+            </TabsTrigger>
+            <TabsTrigger value="inboxes" className="rounded-full data-[state=active]:bg-white data-[state=active]:text-stone-900 data-[state=active]:shadow-sm">
+              Inboxes {inboxCount > 0 && <span className="ml-1.5 rounded-full bg-[#F3E7DE] px-1.5 py-0.5 text-[10px] font-medium text-[#A94F31]">{inboxCount}</span>}
+            </TabsTrigger>
+            <TabsTrigger value="ai" className="rounded-full data-[state=active]:bg-white data-[state=active]:text-stone-900 data-[state=active]:shadow-sm">
+              AI controls
+            </TabsTrigger>
+            <TabsTrigger value="account" className="rounded-full data-[state=active]:bg-white data-[state=active]:text-stone-900 data-[state=active]:shadow-sm">
+              Account
+            </TabsTrigger>
+          </TabsList>
 
-        {/* Business Profile Tab */}
-        <TabsContent value="business" className="mt-6">
-          <Card className="border-gray-200 shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-lg">Business Profile</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleProfileSave} className="space-y-5">
-                <div className="space-y-1.5">
-                  <Label htmlFor="businessName">Business name</Label>
-                  <Input
-                    id="businessName"
-                    value={businessName}
-                    onChange={(e) => setBusinessName(e.target.value)}
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="businessDescription">Business description</Label>
-                  <Textarea
-                    id="businessDescription"
-                    rows={4}
-                    value={businessDescription}
-                    onChange={(e) => setBusinessDescription(e.target.value)}
-                  />
-                </div>
-
-                <div className="space-y-1.5">
-                  <Label htmlFor="serviceInput">Services offered</Label>
-                  <div className="flex gap-2">
+          {/* Business Profile Tab */}
+          <TabsContent value="business" className="mt-6">
+            <Card className="rounded-2xl border-stone-200 bg-white shadow-none">
+              <CardHeader>
+                <CardTitle className="text-[13px] font-semibold uppercase tracking-wide text-stone-500">
+                  Business profile
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleProfileSave} className="space-y-5">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="businessName" className="text-stone-700">Business name</Label>
                     <Input
-                      id="serviceInput"
-                      placeholder="Add a service"
-                      value={serviceInput}
-                      onChange={(e) => setServiceInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          e.preventDefault();
-                          addService();
-                        }
-                      }}
+                      id="businessName"
+                      value={businessName}
+                      onChange={(e) => setBusinessName(e.target.value)}
+                      className="rounded-xl border-stone-200 focus-visible:ring-[#C1613F]"
                     />
-                    <Button type="button" variant="outline" onClick={addService} className="border-gray-200">
-                      <Plus className="h-4 w-4" />
-                    </Button>
                   </div>
-                  {services.length > 0 && (
-                    <div className="flex flex-wrap gap-2 pt-1">
-                      {services.map((svc) => (
-                        <span
-                          key={svc}
-                          className="inline-flex items-center gap-1.5 rounded-md bg-blue-50 px-3 py-1.5 text-sm text-blue-700"
-                        >
-                          {svc}
-                          <button
-                            type="button"
-                            onClick={() => removeService(svc)}
-                            className="text-blue-400 hover:text-blue-600"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
-                        </span>
-                      ))}
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="businessDescription" className="text-stone-700">Business description</Label>
+                    <Textarea
+                      id="businessDescription"
+                      rows={4}
+                      value={businessDescription}
+                      onChange={(e) => setBusinessDescription(e.target.value)}
+                      className="rounded-xl border-stone-200 focus-visible:ring-[#C1613F]"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label htmlFor="serviceInput" className="text-stone-700">Services offered</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="serviceInput"
+                        placeholder="Add a service"
+                        value={serviceInput}
+                        onChange={(e) => setServiceInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            addService();
+                          }
+                        }}
+                        className="rounded-xl border-stone-200 focus-visible:ring-[#C1613F]"
+                      />
+                      <Button type="button" variant="outline" onClick={addService} className="shrink-0 rounded-full border-stone-200 text-stone-700 hover:bg-stone-50">
+                        <Plus className="h-4 w-4" />
+                      </Button>
                     </div>
-                  )}
-                </div>
+                    {services.length > 0 && (
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {services.map((svc) => (
+                          <span
+                            key={svc}
+                            className="inline-flex items-center gap-1.5 rounded-full bg-[#F3E7DE] px-3 py-1.5 text-sm text-[#A94F31]"
+                          >
+                            {svc}
+                            <button
+                              type="button"
+                              onClick={() => removeService(svc)}
+                              className="text-[#C1613F] hover:text-[#A94F31]"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
 
-                <Button type="submit" disabled={profileLoading} className="bg-blue-600 hover:bg-blue-700">
-                  {profileLoading ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Check className="mr-2 h-4 w-4" />
-                  )}
-                  Save changes
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-        </TabsContent>
+                  <Button type="submit" disabled={profileLoading} className="rounded-full bg-[#C1613F] text-white hover:bg-[#A94F31]">
+                    {profileLoading ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Check className="mr-2 h-4 w-4" />
+                    )}
+                    Save changes
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-        {/* Inboxes Tab */}
-        <TabsContent value="inboxes" className="mt-6">
-          <div className="mb-4">
-            <p className="text-sm text-gray-500">Connect your email accounts to send outreach. All credentials are encrypted at rest.</p>
-          </div>
-          <InboxesClient />
-        </TabsContent>
+          {/* Inboxes Tab */}
+          <TabsContent value="inboxes" className="mt-6">
+            <div className="mb-4">
+              <p className="text-sm text-stone-500">Connect your email accounts to send outreach. All credentials are encrypted at rest.</p>
+            </div>
+            <InboxesClient />
+          </TabsContent>
 
-        {/* AI Controls Tab */}
-        <TabsContent value="ai" className="mt-6">
-          <Card className="border-gray-200 shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-lg">Global AI Pause</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-900">
-                    {aiPaused ? 'AI is paused for all conversations' : 'AI is active for all conversations'}
-                  </p>
-                  <p className="mt-1 text-xs text-gray-500">
-                    When paused, the AI worker will not generate or send any emails across all leads. Individual leads can still be controlled separately from their conversation view.
-                  </p>
-                </div>
-                <Button
-                  variant={aiPaused ? 'default' : 'outline'}
-                  size="sm"
-                  disabled={aiPauseLoading}
-                  onClick={async () => {
-                    setAiPauseLoading(true);
-                    try {
-                      const res = await fetch('/api/settings/ai-pause', {
-                        method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ aiPaused: !aiPaused }),
-                      });
-                      if (!res.ok) {
-                        toast.error('Failed to update AI setting.');
-                        return;
+          {/* AI Controls Tab */}
+          <TabsContent value="ai" className="mt-6">
+            <Card className="rounded-2xl border-stone-200 bg-white shadow-none">
+              <CardHeader>
+                <CardTitle className="text-[13px] font-semibold uppercase tracking-wide text-stone-500">
+                  Global AI pause
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-stone-900">
+                      {aiPaused ? 'AI is paused for all conversations' : 'AI is active for all conversations'}
+                    </p>
+                    <p className="mt-1 text-xs leading-relaxed text-stone-500">
+                      When paused, the AI worker will not generate or send any emails across all leads. Individual leads can still be controlled separately from their conversation view.
+                    </p>
+                  </div>
+                  <Button
+                    variant={aiPaused ? 'default' : 'outline'}
+                    size="sm"
+                    disabled={aiPauseLoading}
+                    onClick={async () => {
+                      setAiPauseLoading(true);
+                      try {
+                        const res = await fetch('/api/settings/ai-pause', {
+                          method: 'PUT',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ aiPaused: !aiPaused }),
+                        });
+                        if (!res.ok) {
+                          toast.error('Failed to update AI setting.');
+                          return;
+                        }
+                        setAiPaused(!aiPaused);
+                        toast.success(aiPaused ? 'AI resumed for all conversations.' : 'AI paused for all conversations.');
+                      } catch {
+                        toast.error('Something went wrong.');
+                      } finally {
+                        setAiPauseLoading(false);
                       }
-                      setAiPaused(!aiPaused);
-                      toast.success(aiPaused ? 'AI resumed for all conversations.' : 'AI paused for all conversations.');
-                    } catch {
-                      toast.error('Something went wrong.');
-                    } finally {
-                      setAiPauseLoading(false);
+                    }}
+                    className={
+                      aiPaused
+                        ? 'shrink-0 rounded-full bg-[#C1613F] text-white hover:bg-[#A94F31]'
+                        : 'shrink-0 rounded-full border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700'
                     }
-                  }}
-                  className={aiPaused ? 'bg-blue-600 hover:bg-blue-700' : 'border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700'}
-                >
-                  {aiPauseLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  {aiPaused ? 'Resume AI' : 'Pause All AI'}
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* Account Tab */}
-        <TabsContent value="account" className="mt-6 space-y-6">
-          <Card className="border-gray-200 shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-lg">Account Details</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleAccountSave} className="space-y-5">
-                <div className="space-y-1.5">
-                  <Label htmlFor="name">Full name</Label>
-                  <Input
-                    id="name"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                  />
+                  >
+                    {aiPauseLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    {aiPaused ? 'Resume AI' : 'Pause all AI'}
+                  </Button>
                 </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
-                <div className="space-y-1.5">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    disabled
-                  />
-                  <p className="text-xs text-gray-400">Email cannot be changed.</p>
-                </div>
+          {/* Account Tab */}
+          <TabsContent value="account" className="mt-6 space-y-6">
+            <Card className="rounded-2xl border-stone-200 bg-white shadow-none">
+              <CardHeader>
+                <CardTitle className="text-[13px] font-semibold uppercase tracking-wide text-stone-500">
+                  Account details
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleAccountSave} className="space-y-5">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="name" className="text-stone-700">Full name</Label>
+                    <Input
+                      id="name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      className="rounded-xl border-stone-200 focus-visible:ring-[#C1613F]"
+                    />
+                  </div>
 
-                <Button type="submit" disabled={accountLoading} className="bg-blue-600 hover:bg-blue-700">
-                  {accountLoading ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Check className="mr-2 h-4 w-4" />
-                  )}
-                  Save account
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="email" className="text-stone-700">Email</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      disabled
+                      className="rounded-xl border-stone-200"
+                    />
+                    <p className="text-xs text-stone-400">Email cannot be changed.</p>
+                  </div>
 
-          <Card className="border-gray-200 shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-lg">Change Password</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handlePasswordChange} className="space-y-5">
-                <div className="space-y-1.5">
-                  <Label htmlFor="currentPassword">Current password</Label>
-                  <Input
-                    id="currentPassword"
-                    type="password"
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                    required
-                  />
-                </div>
+                  <Button type="submit" disabled={accountLoading} className="rounded-full bg-[#C1613F] text-white hover:bg-[#A94F31]">
+                    {accountLoading ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Check className="mr-2 h-4 w-4" />
+                    )}
+                    Save account
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
 
-                <div className="space-y-1.5">
-                  <Label htmlFor="newPassword">New password</Label>
-                  <Input
-                    id="newPassword"
-                    type="password"
-                    placeholder="At least 8 characters"
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                    required
-                  />
-                </div>
+            <Card className="rounded-2xl border-stone-200 bg-white shadow-none">
+              <CardHeader>
+                <CardTitle className="text-[13px] font-semibold uppercase tracking-wide text-stone-500">
+                  Change password
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handlePasswordChange} className="space-y-5">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="currentPassword" className="text-stone-700">Current password</Label>
+                    <Input
+                      id="currentPassword"
+                      type="password"
+                      value={currentPassword}
+                      onChange={(e) => setCurrentPassword(e.target.value)}
+                      required
+                      className="rounded-xl border-stone-200 focus-visible:ring-[#C1613F]"
+                    />
+                  </div>
 
-                <div className="space-y-1.5">
-                  <Label htmlFor="confirmNewPassword">Confirm new password</Label>
-                  <Input
-                    id="confirmNewPassword"
-                    type="password"
-                    value={confirmNewPassword}
-                    onChange={(e) => setConfirmNewPassword(e.target.value)}
-                    required
-                  />
-                </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="newPassword" className="text-stone-700">New password</Label>
+                    <Input
+                      id="newPassword"
+                      type="password"
+                      placeholder="At least 8 characters"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      required
+                      className="rounded-xl border-stone-200 focus-visible:ring-[#C1613F]"
+                    />
+                  </div>
 
-                <Button type="submit" disabled={passwordLoading} className="bg-blue-600 hover:bg-blue-700">
-                  {passwordLoading ? (
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  ) : (
-                    <Check className="mr-2 h-4 w-4" />
-                  )}
-                  Update password
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="confirmNewPassword" className="text-stone-700">Confirm new password</Label>
+                    <Input
+                      id="confirmNewPassword"
+                      type="password"
+                      value={confirmNewPassword}
+                      onChange={(e) => setConfirmNewPassword(e.target.value)}
+                      required
+                      className="rounded-xl border-stone-200 focus-visible:ring-[#C1613F]"
+                    />
+                  </div>
+
+                  <Button type="submit" disabled={passwordLoading} className="rounded-full bg-[#C1613F] text-white hover:bg-[#A94F31]">
+                    {passwordLoading ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Check className="mr-2 h-4 w-4" />
+                    )}
+                    Update password
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+      </div>
     </div>
   );
 }

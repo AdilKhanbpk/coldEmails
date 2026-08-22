@@ -65,15 +65,15 @@ const STATUS_COLORS: Record<string, string> = {
   CONNECTED: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   EXPIRED: 'bg-amber-50 text-amber-700 border-amber-200',
   ERROR: 'bg-red-50 text-red-700 border-red-200',
-  DISCONNECTED: 'bg-gray-100 text-gray-500 border-gray-200',
+  DISCONNECTED: 'bg-stone-100 text-stone-500 border-stone-200',
 };
 
 const LEAD_STATUS_COLORS: Record<string, string> = {
-  NOT_STARTED: 'bg-gray-100 text-gray-500 border-gray-200',
-  IN_PROGRESS: 'bg-blue-50 text-blue-700 border-blue-200',
+  NOT_STARTED: 'bg-stone-100 text-stone-500 border-stone-200',
+  IN_PROGRESS: 'bg-[#F3E7DE] text-[#A94F31] border-[#E8C4AE]',
   REPLIED: 'bg-emerald-50 text-emerald-700 border-emerald-200',
   MEETING_BOOKED: 'bg-violet-50 text-violet-700 border-violet-200',
-  COMPLETED: 'bg-gray-100 text-gray-500 border-gray-200',
+  COMPLETED: 'bg-stone-100 text-stone-500 border-stone-200',
   BOUNCED: 'bg-red-50 text-red-700 border-red-200',
   NOT_INTERESTED: 'bg-orange-50 text-orange-700 border-orange-200',
 };
@@ -271,7 +271,7 @@ export function InboxesView({ inboxes }: { inboxes: InboxItem[] }) {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="flex h-full min-h-0 w-full overflow-hidden bg-gray-50">
+    <div className="flex h-full min-h-0 w-full overflow-hidden bg-[#FAF8F4]">
       {/* ── List view: Inboxes + Leads. Always both-visible on desktop;
              a single drill-down step on mobile. Hidden entirely once a
              conversation is open. ── */}
@@ -284,25 +284,25 @@ export function InboxesView({ inboxes }: { inboxes: InboxItem[] }) {
         {/* ── Inboxes ── */}
         <div
           className={cn(
-            'w-full shrink-0 flex-col border-gray-200 bg-white md:flex md:w-64 md:border-r lg:w-80',
+            'w-full shrink-0 flex-col border-stone-200 bg-white md:flex md:w-64 md:border-r lg:w-80',
             pane === 'inboxes' ? 'flex' : 'hidden',
           )}
         >
-          <div className="flex h-14 shrink-0 items-center gap-2 border-b border-gray-200 px-4">
-            <Inbox className="h-4 w-4 text-gray-500" />
-            <span className="text-sm font-semibold text-gray-900">Inboxes</span>
+          <div className="flex h-14 shrink-0 items-center gap-2 border-b border-stone-200 px-4">
+            <Inbox className="h-4 w-4 text-stone-500" strokeWidth={1.75} />
+            <span className="text-sm font-semibold text-stone-900">Inboxes</span>
             {inboxes.length > 0 && (
-              <span className="ml-auto text-xs text-gray-400">{inboxes.length}</span>
+              <span className="ml-auto text-xs text-stone-400">{inboxes.length}</span>
             )}
           </div>
           <ScrollArea className="flex-1">
             {inboxes.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-1 p-8 text-center">
-                <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-full bg-gray-100">
-                  <Mail className="h-5 w-5 text-gray-300" />
+                <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-full bg-stone-100">
+                  <Mail className="h-5 w-5 text-stone-300" strokeWidth={1.75} />
                 </div>
-                <p className="text-xs font-medium text-gray-500">No inboxes connected</p>
-                <p className="text-xs text-gray-400">Go to Settings → Inboxes to connect one.</p>
+                <p className="text-xs font-medium text-stone-500">No inboxes connected</p>
+                <p className="text-xs text-stone-400">Go to Settings → Inboxes to connect one.</p>
               </div>
             ) : (
               <div className="space-y-1 p-2">
@@ -313,9 +313,9 @@ export function InboxesView({ inboxes }: { inboxes: InboxItem[] }) {
                       key={inbox.id}
                       onClick={() => handleSelectInbox(inbox)}
                       className={cn(
-                        'group w-full rounded-lg px-3 py-2.5 text-left transition-all duration-150',
-                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1',
-                        isActive ? 'bg-blue-50' : 'hover:bg-gray-50',
+                        'group w-full rounded-xl px-3 py-2.5 text-left transition-all duration-150',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C1613F] focus-visible:ring-offset-1',
+                        isActive ? 'bg-[#F3E7DE]' : 'hover:bg-stone-50',
                       )}
                     >
                       <div className="flex items-center justify-between gap-2 flex-row md:flex-col lg:flex-row">
@@ -323,15 +323,15 @@ export function InboxesView({ inboxes }: { inboxes: InboxItem[] }) {
                           <span
                             className={cn(
                               'flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors duration-150',
-                              isActive ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-600',
+                              isActive ? 'bg-[#C1613F] text-white' : 'bg-[#F3E7DE] text-[#C1613F]',
                             )}
                           >
-                            <Mail className="h-3.5 w-3.5" />
+                            <Mail className="h-3.5 w-3.5" strokeWidth={1.75} />
                           </span>
                           <span
                             className={cn(
                               'truncate text-sm font-medium',
-                              isActive ? 'text-blue-700' : 'text-gray-700',
+                              isActive ? 'text-[#A94F31]' : 'text-stone-700',
                             )}
                           >
                             {inbox.emailAddress}
@@ -347,7 +347,7 @@ export function InboxesView({ inboxes }: { inboxes: InboxItem[] }) {
                           {inbox.status}
                         </Badge>
                       </div>
-                      <p className="mt-1 truncate pl-9 text-xs text-gray-400">
+                      <p className="mt-1 truncate pl-9 text-xs text-stone-400">
                         {inbox.provider} · {inbox.sentToday}/{capForDisplay(inbox)} sent today
                       </p>
                     </button>
@@ -361,24 +361,24 @@ export function InboxesView({ inboxes }: { inboxes: InboxItem[] }) {
         {/* ── Leads ── */}
         <div
           className={cn(
-            'w-full min-w-0 shrink-0 flex-col border-gray-200 bg-white md:flex md:flex-1 md:border-r',
+            'w-full min-w-0 shrink-0 flex-col border-stone-200 bg-white md:flex md:flex-1 md:border-r',
             pane === 'leads' ? 'flex' : 'hidden',
           )}
         >
-          <div className="flex h-14 shrink-0 items-center gap-2 border-b border-gray-200 px-3 md:px-4">
+          <div className="flex h-14 shrink-0 items-center gap-2 border-b border-stone-200 px-3 md:px-4">
             <button
               onClick={() => setPane('inboxes')}
-              className="-ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 md:hidden"
+              className="-ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-stone-500 transition-colors hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C1613F] md:hidden"
               aria-label="Back to inboxes"
             >
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronLeft className="h-4 w-4" strokeWidth={1.75} />
             </button>
             <div className="min-w-0">
-              <span className="text-sm font-semibold text-gray-900">
+              <span className="text-sm font-semibold text-stone-900">
                 {selectedInbox ? 'Leads' : 'Select an inbox'}
               </span>
               {selectedInbox && (
-                <span className="ml-1.5 truncate text-xs text-gray-400">
+                <span className="ml-1.5 truncate text-xs text-stone-400">
                   · {selectedInbox.emailAddress}
                 </span>
               )}
@@ -387,19 +387,19 @@ export function InboxesView({ inboxes }: { inboxes: InboxItem[] }) {
           <ScrollArea className="flex-1">
             {!selectedInbox ? (
               <div className="flex items-center justify-center p-8">
-                <p className="text-xs text-gray-400">Select an inbox to see leads.</p>
+                <p className="text-xs text-stone-400">Select an inbox to see leads.</p>
               </div>
             ) : leadsLoading ? (
               <div className="flex items-center justify-center p-8">
-                <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                <Loader2 className="h-5 w-5 animate-spin text-stone-400" />
               </div>
             ) : leads.length === 0 ? (
               <div className="flex flex-col items-center justify-center gap-1 p-8 text-center">
-                <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-full bg-gray-100">
-                  <User className="h-5 w-5 text-gray-300" />
+                <div className="mb-1 flex h-10 w-10 items-center justify-center rounded-full bg-stone-100">
+                  <User className="h-5 w-5 text-stone-300" strokeWidth={1.75} />
                 </div>
-                <p className="text-xs font-medium text-gray-500">No leads yet</p>
-                <p className="text-xs text-gray-400">
+                <p className="text-xs font-medium text-stone-500">No leads yet</p>
+                <p className="text-xs text-stone-400">
                   Leads contacted from this inbox will show up here.
                 </p>
               </div>
@@ -412,37 +412,37 @@ export function InboxesView({ inboxes }: { inboxes: InboxItem[] }) {
                       key={lead.id}
                       onClick={() => handleSelectLead(lead)}
                       className={cn(
-                        'w-full rounded-lg px-3 py-2.5 text-left transition-all duration-150',
-                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1',
-                        isActive ? 'bg-blue-50' : 'hover:bg-gray-50',
+                        'w-full rounded-xl px-3 py-2.5 text-left transition-all duration-150',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C1613F] focus-visible:ring-offset-1',
+                        isActive ? 'bg-[#F3E7DE]' : 'hover:bg-stone-50',
                       )}
                     >
                       <div className="flex items-center justify-between gap-2">
                         <div className="flex min-w-0 items-center gap-2.5">
-                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-100 text-[11px] font-semibold text-gray-500">
+                          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-stone-100 text-[11px] font-semibold text-stone-500">
                             {initials(lead.companyName) || '—'}
                           </span>
                           <div className="min-w-0">
-                            <p className="truncate text-sm font-medium text-gray-900">
+                            <p className="truncate text-sm font-medium text-stone-900">
                               {lead.companyName}
                             </p>
-                            <p className="truncate text-xs text-gray-400">{lead.email}</p>
+                            <p className="truncate text-xs text-stone-400">{lead.email}</p>
                           </div>
                         </div>
-                        <ChevronRight className="h-3.5 w-3.5 shrink-0 text-gray-300" />
+                        <ChevronRight className="h-3.5 w-3.5 shrink-0 text-stone-300" />
                       </div>
                       <div className="mt-1.5 flex items-center gap-2 pl-[42px]">
                         <Badge
                           variant="outline"
                           className={cn(
                             'px-1.5 py-0 text-[10px] font-medium',
-                            LEAD_STATUS_COLORS[lead.status] ?? 'border-gray-200 bg-gray-100 text-gray-500',
+                            LEAD_STATUS_COLORS[lead.status] ?? 'border-stone-200 bg-stone-100 text-stone-500',
                           )}
                         >
                           {lead.status.replace(/_/g, ' ')}
                         </Badge>
                         {lead.lastMessageDate && (
-                          <span className="text-[11px] text-gray-400">
+                          <span className="text-[11px] text-stone-400">
                             {format(new Date(lead.lastMessageDate), 'MMM d, HH:mm')}
                           </span>
                         )}
@@ -461,16 +461,16 @@ export function InboxesView({ inboxes }: { inboxes: InboxItem[] }) {
              the entrance animation replays each time it's opened. ── */}
       <div
         className={cn(
-          'relative min-w-0 flex-1 flex-col bg-gray-50',
+          'relative min-w-0 flex-1 flex-col bg-[#FAF8F4]',
           showingConversation ? 'flex' : 'hidden',
         )}
       >
         {!selectedLead ? (
           <div className="flex flex-1 flex-col items-center justify-center p-6 text-center">
             <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-sm">
-              <Mail className="h-6 w-6 text-gray-300" />
+              <Mail className="h-6 w-6 text-stone-300" strokeWidth={1.75} />
             </div>
-            <p className="text-sm text-gray-400">Select a lead to view the conversation.</p>
+            <p className="text-sm text-stone-400">Select a lead to view the conversation.</p>
           </div>
         ) : (
           <div
@@ -478,32 +478,32 @@ export function InboxesView({ inboxes }: { inboxes: InboxItem[] }) {
             className="flex min-h-0 flex-1 flex-col animate-in fade-in slide-in-from-right-6 duration-250 ease-out"
           >
             {/* Header */}
-            <div className="flex h-14 shrink-0 items-center gap-2 border-b border-gray-200 bg-white px-3 md:px-6">
+            <div className="flex h-14 shrink-0 items-center gap-2 border-b border-stone-200 bg-white px-3 md:px-6">
               <button
                 onClick={handleBackToList}
-                className="-ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-500 transition-colors hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                className="-ml-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-stone-500 transition-colors hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C1613F]"
                 aria-label="Back to leads"
               >
-                <ChevronLeft className="h-4 w-4" />
+                <ChevronLeft className="h-4 w-4" strokeWidth={1.75} />
               </button>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-gray-900">
+                <p className="truncate text-sm font-semibold text-stone-900">
                   {selectedLead.companyName}
                 </p>
-                <p className="truncate text-xs text-gray-400">{selectedLead.email}</p>
+                <p className="truncate text-xs text-stone-400">{selectedLead.email}</p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
                 <Badge
                   variant="outline"
                   className={cn(
                     'hidden text-xs sm:inline-flex',
-                    LEAD_STATUS_COLORS[selectedLead.status] ?? 'border-gray-200 bg-gray-100 text-gray-500',
+                    LEAD_STATUS_COLORS[selectedLead.status] ?? 'border-stone-200 bg-stone-100 text-stone-500',
                   )}
                 >
                   {selectedLead.status.replace(/_/g, ' ')}
                 </Badge>
                 {selectedLead.aiEnabled && (
-                  <Badge variant="outline" className="border-blue-200 bg-blue-50 text-xs text-blue-700">
+                  <Badge variant="outline" className="border-[#E8C4AE] bg-[#F3E7DE] text-xs text-[#A94F31]">
                     AI Active
                   </Badge>
                 )}
@@ -514,15 +514,15 @@ export function InboxesView({ inboxes }: { inboxes: InboxItem[] }) {
             <ScrollArea className="min-h-0 flex-1 px-3 py-4 md:px-6">
               {messagesLoading ? (
                 <div className="flex items-center justify-center py-12">
-                  <Loader2 className="h-5 w-5 animate-spin text-gray-400" />
+                  <Loader2 className="h-5 w-5 animate-spin text-stone-400" />
                 </div>
               ) : messages.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 text-center">
                   <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-white shadow-sm">
-                    <Mail className="h-5 w-5 text-gray-300" />
+                    <Mail className="h-5 w-5 text-stone-300" strokeWidth={1.75} />
                   </div>
-                  <p className="text-sm text-gray-400">No messages yet.</p>
-                  <p className="mt-0.5 text-xs text-gray-400">Send the first one with the button below.</p>
+                  <p className="text-sm text-stone-400">No messages yet.</p>
+                  <p className="mt-0.5 text-xs text-stone-400">Send the first one with the button below.</p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -540,30 +540,30 @@ export function InboxesView({ inboxes }: { inboxes: InboxItem[] }) {
                           className={cn(
                             'flex h-8 w-8 shrink-0 items-center justify-center rounded-full',
                             msg.role === 'ASSISTANT'
-                              ? 'bg-blue-100'
+                              ? 'bg-[#F3E7DE]'
                               : msg.role === 'OWNER'
-                                ? 'bg-gray-200'
-                                : 'bg-gray-100',
+                                ? 'bg-stone-200'
+                                : 'bg-stone-100',
                           )}
                         >
                           {msg.role === 'ASSISTANT' ? (
-                            <Bot className="h-4 w-4 text-blue-600" />
+                            <Bot className="h-4 w-4 text-[#C1613F]" strokeWidth={1.75} />
                           ) : msg.role === 'OWNER' ? (
-                            <User className="h-4 w-4 text-gray-600" />
+                            <User className="h-4 w-4 text-stone-600" strokeWidth={1.75} />
                           ) : (
-                            <Mail className="h-4 w-4 text-gray-500" />
+                            <Mail className="h-4 w-4 text-stone-500" strokeWidth={1.75} />
                           )}
                         </div>
                         <div
                           className={cn(
                             'max-w-[85%] rounded-2xl px-4 py-3 shadow-sm sm:max-w-[70%]',
                             msg.role === 'ASSISTANT'
-                              ? 'bg-blue-50 text-gray-800'
-                              : 'border border-gray-200 bg-white text-gray-800',
+                              ? 'bg-[#F3E7DE] text-stone-800'
+                              : 'border border-stone-200 bg-white text-stone-800',
                           )}
                         >
                           <div className="mb-1 flex flex-wrap items-center gap-2">
-                            <span className="text-xs font-medium text-gray-500">
+                            <span className="text-xs font-medium text-stone-500">
                               {msg.role === 'ASSISTANT'
                                 ? 'AI'
                                 : msg.role === 'OWNER'
@@ -573,17 +573,17 @@ export function InboxesView({ inboxes }: { inboxes: InboxItem[] }) {
                             {msg.aiGenerated && (
                               <Badge
                                 variant="outline"
-                                className="border-blue-200 px-1 py-0 text-[10px] text-blue-600"
+                                className="border-[#E8C4AE] px-1 py-0 text-[10px] text-[#A94F31]"
                               >
                                 AI
                               </Badge>
                             )}
-                            <span className="text-[11px] text-gray-400">
+                            <span className="text-[11px] text-stone-400">
                               {format(new Date(msg.createdAt), 'MMM d, HH:mm')}
                             </span>
                           </div>
                           {msg.subject && (
-                            <p className="mb-1 text-xs font-semibold text-gray-600">
+                            <p className="mb-1 text-xs font-semibold text-stone-600">
                               Subject: {msg.subject}
                             </p>
                           )}
@@ -591,7 +591,7 @@ export function InboxesView({ inboxes }: { inboxes: InboxItem[] }) {
                             {msg.content}
                           </p>
                           {msg.senderEmail && msg.role === 'CUSTOMER' && (
-                            <p className="mt-1.5 text-[11px] text-gray-400">
+                            <p className="mt-1.5 text-[11px] text-stone-400">
                               From: {msg.senderEmail}
                             </p>
                           )}
@@ -604,14 +604,14 @@ export function InboxesView({ inboxes }: { inboxes: InboxItem[] }) {
             </ScrollArea>
 
             {/* Compose — collapsed trigger by default, opens on demand */}
-            <div className="shrink-0 border-t border-gray-200 bg-white pb-[env(safe-area-inset-bottom)]">
+            <div className="shrink-0 border-t border-stone-200 bg-white pb-[env(safe-area-inset-bottom)]">
               {!composeOpen ? (
                 <div className="p-3 md:px-6 md:py-4">
                   <button
                     onClick={openCompose}
-                    className="flex w-full items-center gap-2.5 rounded-full border border-gray-200 bg-gray-50 px-4 py-2.5 text-left text-sm text-gray-400 transition-colors duration-150 hover:border-gray-300 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                    className="flex w-full items-center gap-2.5 rounded-full border border-stone-200 bg-stone-50 px-4 py-2.5 text-left text-sm text-stone-400 transition-colors duration-150 hover:border-stone-300 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C1613F]"
                   >
-                    <Pencil className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                    <Pencil className="h-3.5 w-3.5 shrink-0 text-stone-400" strokeWidth={1.75} />
                     Write a reply…
                   </button>
                 </div>
@@ -619,11 +619,11 @@ export function InboxesView({ inboxes }: { inboxes: InboxItem[] }) {
                 <div className="animate-in fade-in slide-in-from-bottom-2 p-3 duration-200 md:px-6 md:py-4">
                   <form onSubmit={handleSend} className="space-y-2">
                     <div className="mb-1 flex items-center justify-between gap-2">
-                      <div className="flex min-w-0 items-center gap-1.5 text-xs text-gray-400">
-                        <Mail className="h-3.5 w-3.5 shrink-0" />
+                      <div className="flex min-w-0 items-center gap-1.5 text-xs text-stone-400">
+                        <Mail className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
                         <span className="truncate">
                           Sending from{' '}
-                          <span className="font-medium text-gray-600">
+                          <span className="font-medium text-stone-600">
                             {selectedInbox?.emailAddress}
                           </span>
                         </span>
@@ -631,21 +631,21 @@ export function InboxesView({ inboxes }: { inboxes: InboxItem[] }) {
                       <button
                         type="button"
                         onClick={closeCompose}
-                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                        className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-stone-400 transition-colors hover:bg-stone-100 hover:text-stone-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C1613F]"
                         aria-label="Discard reply"
                       >
-                        <X className="h-3.5 w-3.5" />
+                        <X className="h-3.5 w-3.5" strokeWidth={1.75} />
                       </button>
                     </div>
                     <Input
                       placeholder="Subject (optional)"
                       value={subject}
                       onChange={(e) => setSubject(e.target.value)}
-                      className="border-gray-200 text-sm focus-visible:ring-blue-500"
+                      className="rounded-xl border-stone-200 text-sm focus-visible:ring-[#C1613F]"
                     />
                     <textarea
                       ref={textareaRef}
-                      className="w-full resize-none rounded-md border border-gray-200 px-3 py-2.5 text-sm leading-relaxed placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full resize-none rounded-xl border border-stone-200 px-3 py-2.5 text-sm leading-relaxed placeholder:text-stone-400 focus:outline-none focus:ring-2 focus:ring-[#C1613F]"
                       rows={3}
                       placeholder="Type your message..."
                       value={content}
@@ -658,11 +658,11 @@ export function InboxesView({ inboxes }: { inboxes: InboxItem[] }) {
                       }}
                     />
                     <div className="flex items-center justify-between gap-2">
-                      <p className="hidden text-xs text-gray-400 sm:block">Ctrl+Enter to send</p>
+                      <p className="hidden text-xs text-stone-400 sm:block">Ctrl+Enter to send</p>
                       <Button
                         type="submit"
                         disabled={sending || !content.trim()}
-                        className="w-full bg-blue-600 hover:bg-blue-700 sm:ml-auto sm:w-auto"
+                        className="w-full rounded-full bg-[#C1613F] hover:bg-[#A94F31] sm:ml-auto sm:w-auto"
                         size="sm"
                       >
                         {sending ? (

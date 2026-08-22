@@ -82,11 +82,11 @@ type SortField = 'companyName' | 'status' | 'createdAt';
 // ─── Small presentational helpers ──────────────────────────────────────────
 
 function SortIcon({ active, order }: { active: boolean; order: 'asc' | 'desc' }) {
-  if (!active) return <ArrowUpDown className="h-3.5 w-3.5 text-gray-300" />;
+  if (!active) return <ArrowUpDown className="h-3.5 w-3.5 text-stone-300" />;
   return order === 'asc' ? (
-    <ArrowUp className="h-3.5 w-3.5 text-blue-600" />
+    <ArrowUp className="h-3.5 w-3.5 text-[#C1613F]" />
   ) : (
-    <ArrowDown className="h-3.5 w-3.5 text-blue-600" />
+    <ArrowDown className="h-3.5 w-3.5 text-[#C1613F]" />
   );
 }
 
@@ -110,8 +110,8 @@ function SortableHead({
         onClick={() => onSort(field)}
         className={cn(
           'flex items-center gap-1.5 rounded transition-colors',
-          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-1',
-          active ? 'font-medium text-gray-900' : 'text-gray-500 hover:text-gray-900',
+          'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C1613F] focus-visible:ring-offset-1',
+          active ? 'font-medium text-stone-900' : 'text-stone-500 hover:text-stone-900',
         )}
       >
         {label}
@@ -124,13 +124,13 @@ function SortableHead({
 const ADD_LEAD_ACTIONS = (
   <div className="flex flex-col gap-2 sm:flex-row">
     <Link href="/leads/import" className="sm:order-1">
-      <Button variant="outline" className="w-full border-gray-200 sm:w-auto">
+      <Button variant="outline" className="w-full rounded-full border-stone-200 text-stone-700 hover:bg-stone-50 sm:w-auto">
         <Upload className="mr-2 h-4 w-4" />
         Import from file
       </Button>
     </Link>
     <Link href="/leads/new" className="sm:order-2">
-      <Button className="w-full bg-blue-600 hover:bg-blue-700 sm:w-auto">
+      <Button className="w-full rounded-full bg-[#C1613F] text-white hover:bg-[#A94F31] sm:w-auto">
         <Plus className="mr-2 h-4 w-4" />
         Add lead
       </Button>
@@ -281,13 +281,13 @@ export const LeadsClient = React.memo(function LeadsClient() {
     return (
       <div className="space-y-5">
         <PageHeader total={0} />
-        <div className="rounded-lg border border-dashed border-gray-200 bg-white shadow-sm">
+        <div className="rounded-2xl border border-dashed border-stone-200 bg-white">
           <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-blue-50">
-              <Users className="h-7 w-7 text-blue-600" />
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#F3E7DE]">
+              <Users className="h-6 w-6 text-[#C1613F]" strokeWidth={1.75} />
             </div>
-            <h3 className="mt-5 text-lg font-semibold text-gray-900">No leads yet</h3>
-            <p className="mt-2 max-w-md text-sm text-gray-500">
+            <h3 className="mt-5 font-serif text-lg font-medium text-stone-900">No leads yet</h3>
+            <p className="mt-2 max-w-md text-sm leading-relaxed text-stone-500">
               Add leads manually or import from a CSV/Excel file to start your outreach
               campaigns.
             </p>
@@ -303,13 +303,13 @@ export const LeadsClient = React.memo(function LeadsClient() {
       <PageHeader total={total} showActions />
 
       {/* Filters */}
-      <div className="rounded-lg border border-gray-200 bg-white p-3 shadow-sm sm:p-4">
+      <div className="rounded-2xl border border-stone-200 bg-white p-3 sm:p-4">
         <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center sm:gap-3">
           <Select
             value={filters.status || 'all'}
             onValueChange={(v) => handleFilterChange('status', v === 'all' ? '' : v)}
           >
-            <SelectTrigger className="w-full border-gray-200 sm:w-[160px]">
+            <SelectTrigger className="w-full rounded-full border-stone-200 sm:w-[160px]">
               <SelectValue placeholder="All statuses" />
             </SelectTrigger>
             <SelectContent>
@@ -326,7 +326,7 @@ export const LeadsClient = React.memo(function LeadsClient() {
             value={filters.outreachTypeId || 'all'}
             onValueChange={(v) => handleFilterChange('outreachTypeId', v === 'all' ? '' : v)}
           >
-            <SelectTrigger className="w-full border-gray-200 sm:w-[180px]">
+            <SelectTrigger className="w-full rounded-full border-stone-200 sm:w-[180px]">
               <SelectValue placeholder="All types" />
             </SelectTrigger>
             <SelectContent>
@@ -343,7 +343,7 @@ export const LeadsClient = React.memo(function LeadsClient() {
             value={filters.source || 'all'}
             onValueChange={(v) => handleFilterChange('source', v === 'all' ? '' : v)}
           >
-            <SelectTrigger className="w-full border-gray-200 sm:w-[140px]">
+            <SelectTrigger className="w-full rounded-full border-stone-200 sm:w-[140px]">
               <SelectValue placeholder="All sources" />
             </SelectTrigger>
             <SelectContent>
@@ -357,19 +357,19 @@ export const LeadsClient = React.memo(function LeadsClient() {
           </Select>
 
           <div className="relative col-span-2 sm:w-[180px]">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-stone-400" />
             <Input
               placeholder="Filter by country..."
               value={countryInput}
               onChange={(e) => setCountryInput(e.target.value)}
-              className="border-gray-200 pl-8 focus-visible:ring-blue-500"
+              className="rounded-full border-stone-200 pl-8 focus-visible:ring-[#C1613F]"
             />
           </div>
 
           {hasActiveFilters && (
             <button
               onClick={clearFilters}
-              className="col-span-2 flex items-center justify-center gap-1 rounded-md px-2 py-1.5 text-sm font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 sm:col-span-1 sm:ml-auto sm:justify-start sm:px-2"
+              className="col-span-2 flex items-center justify-center gap-1 rounded-full px-2 py-1.5 text-sm font-medium text-stone-500 transition-colors hover:bg-stone-100 hover:text-stone-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C1613F] sm:col-span-1 sm:ml-auto sm:justify-start sm:px-2"
             >
               <X className="h-3.5 w-3.5" />
               Clear filters
@@ -379,16 +379,16 @@ export const LeadsClient = React.memo(function LeadsClient() {
       </div>
 
       {isFilteredEmpty ? (
-        <div className="rounded-lg border border-dashed border-gray-200 bg-white shadow-sm">
+        <div className="rounded-2xl border border-dashed border-stone-200 bg-white">
           <div className="flex flex-col items-center justify-center px-6 py-16 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gray-100">
-              <SearchX className="h-7 w-7 text-gray-400" />
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-stone-100">
+              <SearchX className="h-6 w-6 text-stone-400" strokeWidth={1.75} />
             </div>
-            <h3 className="mt-5 text-lg font-semibold text-gray-900">No leads match your filters</h3>
-            <p className="mt-2 max-w-md text-sm text-gray-500">
+            <h3 className="mt-5 font-serif text-lg font-medium text-stone-900">No leads match your filters</h3>
+            <p className="mt-2 max-w-md text-sm leading-relaxed text-stone-500">
               Try adjusting or clearing your filters to see more results.
             </p>
-            <Button variant="outline" className="mt-6 border-gray-200" onClick={clearFilters}>
+            <Button variant="outline" className="mt-6 rounded-full border-stone-200 text-stone-700 hover:bg-stone-50" onClick={clearFilters}>
               <X className="mr-2 h-4 w-4" />
               Clear filters
             </Button>
@@ -399,14 +399,14 @@ export const LeadsClient = React.memo(function LeadsClient() {
           {/* Desktop table */}
           <div
             className={cn(
-              'hidden overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm transition-opacity duration-150 md:block',
+              'hidden overflow-hidden rounded-2xl border border-stone-200 bg-white transition-opacity duration-150 md:block',
               loading && 'opacity-60',
             )}
           >
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-gray-50 hover:bg-gray-50">
+                  <TableRow className="border-stone-200 bg-stone-50 hover:bg-stone-50">
                     <SortableHead
                       label="Company"
                       field="companyName"
@@ -414,8 +414,8 @@ export const LeadsClient = React.memo(function LeadsClient() {
                       sortOrder={sortOrder}
                       onSort={handleSort}
                     />
-                    <TableHead>Email</TableHead>
-                    <TableHead>Outreach type</TableHead>
+                    <TableHead className="text-stone-500">Email</TableHead>
+                    <TableHead className="text-stone-500">Outreach type</TableHead>
                     <SortableHead
                       label="Status"
                       field="status"
@@ -423,9 +423,9 @@ export const LeadsClient = React.memo(function LeadsClient() {
                       sortOrder={sortOrder}
                       onSort={handleSort}
                     />
-                    <TableHead className="text-center">Step</TableHead>
-                    <TableHead>Source</TableHead>
-                    <TableHead>Preferred time</TableHead>
+                    <TableHead className="text-center text-stone-500">Step</TableHead>
+                    <TableHead className="text-stone-500">Source</TableHead>
+                    <TableHead className="text-stone-500">Preferred time</TableHead>
                     <SortableHead
                       label="Created"
                       field="createdAt"
@@ -439,15 +439,15 @@ export const LeadsClient = React.memo(function LeadsClient() {
                   {leads.map((lead) => (
                     <TableRow
                       key={lead.id}
-                      className="cursor-pointer transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-500"
+                      className="cursor-pointer border-stone-200 transition-colors hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#C1613F]"
                       {...rowNavProps(lead)}
                     >
-                      <TableCell className="font-medium text-gray-900">
+                      <TableCell className="font-medium text-stone-900">
                         {lead.companyName}
                       </TableCell>
-                      <TableCell className="text-gray-600">{lead.email}</TableCell>
-                      <TableCell className="text-gray-600">
-                        {lead.outreachType?.name || <span className="text-gray-400">—</span>}
+                      <TableCell className="text-stone-600">{lead.email}</TableCell>
+                      <TableCell className="text-stone-600">
+                        {lead.outreachType?.name || <span className="text-stone-400">—</span>}
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap gap-1">
@@ -455,16 +455,16 @@ export const LeadsClient = React.memo(function LeadsClient() {
                           <ReplyTagBadge tag={lead.replyTag} />
                         </div>
                       </TableCell>
-                      <TableCell className="text-center text-gray-600">
+                      <TableCell className="text-center text-stone-600">
                         {lead.currentStep}
                       </TableCell>
-                      <TableCell className="text-gray-600">
+                      <TableCell className="text-stone-600">
                         {SOURCE_LABELS[lead.source] || lead.source}
                       </TableCell>
-                      <TableCell className="whitespace-nowrap text-gray-500">
+                      <TableCell className="whitespace-nowrap text-stone-500">
                         {format(new Date(lead.preferredTime), 'MMM d, yyyy HH:mm')}
                       </TableCell>
-                      <TableCell className="whitespace-nowrap text-gray-500">
+                      <TableCell className="whitespace-nowrap text-stone-500">
                         {format(new Date(lead.createdAt), 'MMM d, yyyy')}
                       </TableCell>
                     </TableRow>
@@ -484,31 +484,31 @@ export const LeadsClient = React.memo(function LeadsClient() {
             {leads.map((lead) => (
               <div
                 key={lead.id}
-                className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-4 shadow-sm transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                className="flex items-center gap-3 rounded-2xl border border-stone-200 bg-white p-4 transition-colors hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#C1613F]"
                 {...rowNavProps(lead)}
               >
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <p className="truncate font-medium text-gray-900">{lead.companyName}</p>
+                    <p className="truncate font-medium text-stone-900">{lead.companyName}</p>
                     <StatusBadge status={lead.status} />
                   </div>
-                  <p className="mt-0.5 truncate text-sm text-gray-500">{lead.email}</p>
-                  <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-gray-400">
+                  <p className="mt-0.5 truncate text-sm text-stone-500">{lead.email}</p>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-stone-400">
                     {lead.outreachType && <span>{lead.outreachType.name}</span>}
                     <span>Step {lead.currentStep}</span>
                     <span>{SOURCE_LABELS[lead.source] || lead.source}</span>
                     <ReplyTagBadge tag={lead.replyTag} />
                   </div>
                 </div>
-                <ChevronRight className="h-4 w-4 shrink-0 text-gray-300" />
+                <ChevronRight className="h-4 w-4 shrink-0 text-stone-300" />
               </div>
             ))}
           </div>
 
           {/* Pagination */}
           <div className="flex flex-col items-center justify-between gap-3 sm:flex-row">
-            <p className="flex items-center gap-2 text-sm text-gray-500">
-              {loading && <Loader2 className="h-3.5 w-3.5 animate-spin text-gray-400" />}
+            <p className="flex items-center gap-2 text-sm text-stone-500">
+              {loading && <Loader2 className="h-3.5 w-3.5 animate-spin text-stone-400" />}
               {total} lead{total !== 1 ? 's' : ''} total
             </p>
             <div className="flex items-center gap-2">
@@ -517,12 +517,12 @@ export const LeadsClient = React.memo(function LeadsClient() {
                 size="sm"
                 onClick={() => setPage((p) => Math.max(1, p - 1))}
                 disabled={page === 1 || loading}
-                className="border-gray-200"
+                className="rounded-full border-stone-200 text-stone-700 hover:bg-stone-50"
               >
                 <ChevronLeft className="h-4 w-4 sm:mr-1" />
                 <span className="hidden sm:inline">Previous</span>
               </Button>
-              <span className="text-sm text-gray-500">
+              <span className="text-sm text-stone-500">
                 Page {page} of {totalPages}
               </span>
               <Button
@@ -530,7 +530,7 @@ export const LeadsClient = React.memo(function LeadsClient() {
                 size="sm"
                 onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                 disabled={page === totalPages || loading}
-                className="border-gray-200"
+                className="rounded-full border-stone-200 text-stone-700 hover:bg-stone-50"
               >
                 <span className="hidden sm:inline">Next</span>
                 <ChevronRight className="h-4 w-4 sm:ml-1" />
@@ -559,8 +559,8 @@ function PageHeader({ total, showActions }: { total: number | null; showActions?
   return (
     <div className="flex flex-col gap-3 px-4 pt-4 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <h1 className="text-lg font-semibold text-gray-900">Leads</h1>
-        <p className="text-sm text-gray-500">
+        <h1 className="font-serif text-lg font-medium text-stone-900">Leads</h1>
+        <p className="text-sm text-stone-500">
           {total === null ? 'Loading your leads…' : `${total} lead${total !== 1 ? 's' : ''} total`}
         </p>
       </div>

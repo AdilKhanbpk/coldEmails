@@ -24,10 +24,10 @@ const ROLE_LABELS: Record<string, string> = {
 };
 
 const ROLE_STYLES: Record<string, string> = {
-  ADMIN: 'border-blue-200 bg-blue-50 text-blue-700',
-  MANAGER: 'border-green-200 bg-green-50 text-green-700',
-  MEMBER: 'border-gray-200 text-gray-600',
-  VIEWER: 'border-gray-200 bg-gray-50 text-gray-500',
+  ADMIN: 'border-[#E8C4AE] bg-[#F3E7DE] text-[#A94F31]',
+  MANAGER: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  MEMBER: 'border-stone-200 text-stone-600',
+  VIEWER: 'border-stone-200 bg-stone-50 text-stone-500',
 };
 
 export function TeamClient({ currentRole }: { currentRole: Role }) {
@@ -140,210 +140,216 @@ export function TeamClient({ currentRole }: { currentRole: Role }) {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-6 w-6 animate-spin text-gray-400" />
+      <div className="flex min-h-screen items-center justify-center bg-[#FAF8F4] py-20">
+        <Loader2 className="h-5 w-5 animate-spin text-stone-400" />
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-4xl px-6 py-8">
-      <div className="mb-8 flex items-start justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Team Workspace</h1>
-          <p className="mt-1 text-sm text-gray-500">Manage team members, roles, and shared access.</p>
-        </div>
-        {canManage && (
-          <Button onClick={() => setShowInvite(true)} className="bg-blue-600 hover:bg-blue-700">
-            <UserPlus className="mr-2 h-4 w-4" />
-            Invite Member
-          </Button>
-        )}
-      </div>
-
-      {/* Team Members */}
-      <Card className="border-gray-200 shadow-sm">
-        <CardHeader>
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Users className="h-4 w-4 text-blue-600" />
-            Team Members ({members.length})
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3">
-            {members.map((member) => (
-              <div key={member.id} className="flex items-center justify-between rounded-md border border-gray-100 px-3 py-2.5">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-full bg-blue-600 text-sm font-medium text-white">
-                    {member.name.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase()}
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">{member.name}</p>
-                    <p className="text-xs text-gray-500">{member.email}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {canManage ? (
-                    <Select
-                      value={member.role}
-                      onValueChange={(v) => handleRoleChange(member.id, v as Role)}
-                    >
-                      <SelectTrigger className="w-[120px] border-gray-200 h-8 text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ADMIN">Admin</SelectItem>
-                        <SelectItem value="MANAGER">Manager</SelectItem>
-                        <SelectItem value="MEMBER">Member</SelectItem>
-                        <SelectItem value="VIEWER">Viewer</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <Badge variant="outline" className={ROLE_STYLES[member.role]}>
-                      {ROLE_LABELS[member.role]}
-                    </Badge>
-                  )}
-                  {canManage && member.role !== 'ADMIN' && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleRemove(member.id)}
-                      className="text-red-600 hover:bg-red-50 h-8 w-8 p-0"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-              </div>
-            ))}
+    <div className="min-h-screen bg-[#FAF8F4]">
+      <div className="mx-auto max-w-4xl px-4 py-8 sm:px-6 sm:py-10">
+        <div className="mb-8 flex flex-col gap-4 border-b border-stone-200 pb-6 sm:mb-10 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="font-serif text-[28px] font-medium tracking-tight text-stone-900 sm:text-3xl">
+              Team Workspace
+            </h1>
+            <p className="mt-1.5 text-sm text-stone-500">Manage team members, roles, and shared access.</p>
           </div>
-        </CardContent>
-      </Card>
+          {canManage && (
+            <Button onClick={() => setShowInvite(true)} className="shrink-0 rounded-full bg-[#C1613F] text-white hover:bg-[#A94F31]">
+              <UserPlus className="mr-2 h-4 w-4" />
+              Invite member
+            </Button>
+          )}
+        </div>
 
-      {/* Pending Invitations */}
-      {invitations.length > 0 && (
-        <Card className="mt-6 border-gray-200 shadow-sm">
+        {/* Team Members */}
+        <Card className="rounded-2xl border-stone-200 bg-white shadow-none">
           <CardHeader>
-            <CardTitle className="text-sm">Pending Invitations</CardTitle>
+            <CardTitle className="flex items-center gap-2 text-[13px] font-semibold uppercase tracking-wide text-stone-500">
+              <Users className="h-4 w-4 text-[#C1613F]" strokeWidth={1.75} />
+              Team members ({members.length})
+            </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
-            {invitations.map((inv) => (
-              <div key={inv.id} className="flex items-center justify-between rounded-md border border-gray-100 px-3 py-2.5">
-                <div>
-                  <p className="text-sm font-medium text-gray-900">{inv.email}</p>
-                  <p className="text-xs text-gray-500">
-                    Invited as {ROLE_LABELS[inv.role]} · {format(new Date(inv.createdAt), 'MMM d, yyyy')}
-                  </p>
+          <CardContent>
+            <div className="space-y-2.5">
+              {members.map((member) => (
+                <div key={member.id} className="flex flex-col gap-3 rounded-xl border border-stone-100 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#C1613F] text-sm font-medium text-white">
+                      {member.name.split(' ').map((n) => n[0]).slice(0, 2).join('').toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-stone-900">{member.name}</p>
+                      <p className="truncate text-xs text-stone-500">{member.email}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 pl-12 sm:pl-0">
+                    {canManage ? (
+                      <Select
+                        value={member.role}
+                        onValueChange={(v) => handleRoleChange(member.id, v as Role)}
+                      >
+                        <SelectTrigger className="h-8 w-[120px] rounded-full border-stone-200 text-xs">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ADMIN">Admin</SelectItem>
+                          <SelectItem value="MANAGER">Manager</SelectItem>
+                          <SelectItem value="MEMBER">Member</SelectItem>
+                          <SelectItem value="VIEWER">Viewer</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <Badge variant="outline" className={ROLE_STYLES[member.role]}>
+                        {ROLE_LABELS[member.role]}
+                      </Badge>
+                    )}
+                    {canManage && member.role !== 'ADMIN' && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleRemove(member.id)}
+                        className="h-8 w-8 rounded-full p-0 text-red-600 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
                 </div>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="border-gray-200 text-xs"
-                  onClick={() => copyInviteUrl(`/signup?invite=${inv.token}`)}
-                >
-                  {copiedUrl === `/signup?invite=${inv.token}` ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                  Copy Link
-                </Button>
-              </div>
-            ))}
+              ))}
+            </div>
           </CardContent>
         </Card>
-      )}
 
-      {/* Activity Log */}
-      <Card className="mt-6 border-gray-200 shadow-sm">
-        <CardHeader>
-          <CardTitle className="text-sm flex items-center gap-2">
-            <Activity className="h-4 w-4 text-blue-600" />
-            Recent Activity
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {activity.length === 0 ? (
-            <p className="py-6 text-center text-sm text-gray-400">No recent activity.</p>
-          ) : (
-            <ScrollArea className="max-h-80">
-              <div className="space-y-2">
-                {activity.map((log) => (
-                  <div key={log.id} className="flex items-start gap-3 rounded-md px-3 py-2 text-sm">
-                    <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-gray-100">
-                      <Shield className="h-3 w-3 text-gray-500" />
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-gray-700">
-                        <span className="font-medium text-gray-900">{log.user.name}</span> {log.details || log.action}
-                      </p>
-                      <p className="text-xs text-gray-400">{format(new Date(log.createdAt), 'MMM d, yyyy HH:mm')}</p>
-                    </div>
+        {/* Pending Invitations */}
+        {invitations.length > 0 && (
+          <Card className="mt-6 rounded-2xl border-stone-200 bg-white shadow-none">
+            <CardHeader>
+              <CardTitle className="text-[13px] font-semibold uppercase tracking-wide text-stone-500">
+                Pending invitations
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2.5">
+              {invitations.map((inv) => (
+                <div key={inv.id} className="flex flex-col gap-2 rounded-xl border border-stone-100 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-stone-900">{inv.email}</p>
+                    <p className="text-xs text-stone-500">
+                      Invited as {ROLE_LABELS[inv.role]} · {format(new Date(inv.createdAt), 'MMM d, yyyy')}
+                    </p>
                   </div>
-                ))}
-              </div>
-            </ScrollArea>
-          )}
-        </CardContent>
-      </Card>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0 rounded-full border-stone-200 text-xs text-stone-700 hover:bg-stone-50"
+                    onClick={() => copyInviteUrl(`/signup?invite=${inv.token}`)}
+                  >
+                    {copiedUrl === `/signup?invite=${inv.token}` ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                    Copy link
+                  </Button>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
-      {/* Invite Dialog */}
-      <Dialog open={showInvite} onOpenChange={setShowInvite}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Invite Team Member</DialogTitle>
-            <DialogDescription>
-              Send an invitation to join your workspace. They can sign up with the link after you invite them.
-            </DialogDescription>
-          </DialogHeader>
-          <form onSubmit={handleInvite} className="space-y-4">
-            <div>
-              <label className="text-sm font-medium text-gray-700">Email</label>
-              <Input
-                type="email"
-                placeholder="colleague@example.com"
-                value={inviteEmail}
-                onChange={(e) => setInviteEmail(e.target.value)}
-                required
-                className="mt-1 border-gray-200"
-              />
-            </div>
-            <div>
-              <label className="text-sm font-medium text-gray-700">Role</label>
-              <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as Role)}>
-                <SelectTrigger className="mt-1 border-gray-200">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="ADMIN">Admin — Full access including billing & team</SelectItem>
-                  <SelectItem value="MANAGER">Manager — Manage all leads & outreach types</SelectItem>
-                  <SelectItem value="MEMBER">Member — Manage own leads only</SelectItem>
-                  <SelectItem value="VIEWER">Viewer — Read-only access</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {inviteResult && (
-              <div className="rounded-md bg-blue-50 px-3 py-2 text-xs text-blue-700">
-                Share this signup link: <span className="font-mono">{inviteResult}</span>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="ml-2 h-6 p-0"
-                  onClick={() => copyInviteUrl(inviteResult)}
-                >
-                  {copiedUrl === inviteResult ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                </Button>
-              </div>
+        {/* Activity Log */}
+        <Card className="mt-6 rounded-2xl border-stone-200 bg-white shadow-none">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-[13px] font-semibold uppercase tracking-wide text-stone-500">
+              <Activity className="h-4 w-4 text-[#C1613F]" strokeWidth={1.75} />
+              Recent activity
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {activity.length === 0 ? (
+              <p className="py-6 text-center text-sm text-stone-400">No recent activity.</p>
+            ) : (
+              <ScrollArea className="max-h-80">
+                <div className="space-y-1">
+                  {activity.map((log) => (
+                    <div key={log.id} className="flex items-start gap-3 rounded-xl px-3 py-2 text-sm">
+                      <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-stone-100">
+                        <Shield className="h-3 w-3 text-stone-500" strokeWidth={1.75} />
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-stone-700">
+                          <span className="font-medium text-stone-900">{log.user.name}</span> {log.details || log.action}
+                        </p>
+                        <p className="text-xs text-stone-400">{format(new Date(log.createdAt), 'MMM d, yyyy HH:mm')}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </ScrollArea>
             )}
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setShowInvite(false)} className="border-gray-200">
-                Cancel
-              </Button>
-              <Button type="submit" disabled={inviting} className="bg-blue-600 hover:bg-blue-700">
-                {inviting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
-                Send Invitation
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
+          </CardContent>
+        </Card>
+
+        {/* Invite Dialog */}
+        <Dialog open={showInvite} onOpenChange={setShowInvite}>
+          <DialogContent className="rounded-2xl">
+            <DialogHeader>
+              <DialogTitle className="font-serif text-stone-900">Invite team member</DialogTitle>
+              <DialogDescription className="text-stone-500">
+                Send an invitation to join your workspace. They can sign up with the link after you invite them.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleInvite} className="space-y-4">
+              <div>
+                <label className="text-sm font-medium text-stone-700">Email</label>
+                <Input
+                  type="email"
+                  placeholder="colleague@example.com"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  required
+                  className="mt-1 rounded-xl border-stone-200 focus-visible:ring-[#C1613F]"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium text-stone-700">Role</label>
+                <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as Role)}>
+                  <SelectTrigger className="mt-1 rounded-xl border-stone-200">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="ADMIN">Admin — Full access including billing & team</SelectItem>
+                    <SelectItem value="MANAGER">Manager — Manage all leads & outreach types</SelectItem>
+                    <SelectItem value="MEMBER">Member — Manage own leads only</SelectItem>
+                    <SelectItem value="VIEWER">Viewer — Read-only access</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {inviteResult && (
+                <div className="rounded-xl bg-[#F3E7DE] px-3 py-2 text-xs text-[#A94F31]">
+                  Share this signup link: <span className="font-mono">{inviteResult}</span>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="ml-2 h-6 p-0 hover:bg-transparent"
+                    onClick={() => copyInviteUrl(inviteResult)}
+                  >
+                    {copiedUrl === inviteResult ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                  </Button>
+                </div>
+              )}
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setShowInvite(false)} className="rounded-full border-stone-200 text-stone-700 hover:bg-stone-50">
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={inviting} className="rounded-full bg-[#C1613F] text-white hover:bg-[#A94F31]">
+                  {inviting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
+                  Send invitation
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </div>
     </div>
   );
 }

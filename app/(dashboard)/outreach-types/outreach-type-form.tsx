@@ -197,174 +197,187 @@ export function OutreachTypeForm({ mode, typeId, initialData }: OutreachTypeForm
 
   return (
     <>
-      <div className="mx-auto max-w-3xl px-6 py-8">
-        <div className="mb-6">
-          <Breadcrumbs items={[
-            { label: 'Outreach Types', href: '/outreach-types' },
-            { label: isEdit ? 'Edit' : 'Create' },
-          ]} />
-          <h1 className="mt-4 text-2xl font-semibold tracking-tight text-gray-900">
-            {isEdit ? 'Edit Outreach Type' : 'Create Outreach Type'}
-          </h1>
-        </div>
+      <div className="min-h-screen bg-[#FAF8F4]">
+        <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 sm:py-10">
+          <div className="mb-8 border-b border-stone-200 pb-6">
+            <Breadcrumbs items={[
+              { label: 'Outreach Types', href: '/outreach-types' },
+              { label: isEdit ? 'Edit' : 'Create' },
+            ]} />
+            <h1 className="mt-4 font-serif text-[28px] font-medium tracking-tight text-stone-900 sm:text-3xl">
+              {isEdit ? 'Edit Outreach Type' : 'Create Outreach Type'}
+            </h1>
+          </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          {/* Name */}
-          <Card className="border-gray-200 shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-base">Name</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <Input
-                placeholder="e.g. SaaS Founders Outreach"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-              />
-            </CardContent>
-          </Card>
+          <form onSubmit={handleSubmit} className="space-y-5">
+            {/* Name */}
+            <Card className="rounded-2xl border-stone-200 bg-white shadow-none">
+              <CardHeader>
+                <CardTitle className="text-[13px] font-semibold uppercase tracking-wide text-stone-500">
+                  Name
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Input
+                  placeholder="e.g. SaaS Founders Outreach"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  className="rounded-xl border-stone-200 focus-visible:ring-[#C1613F]"
+                />
+              </CardContent>
+            </Card>
 
-          {/* System Prompt */}
-          <Card className="border-gray-200 shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-base">AI Instructions</CardTitle>
-              <p className="text-sm text-gray-500">
-                Tell the AI how to write emails for this outreach type. Include your goals,
-                tone preferences, and any constraints.
-              </p>
-            </CardHeader>
-            <CardContent>
-              <Textarea
-                placeholder="e.g. You are writing cold outreach emails to SaaS founders. Keep emails concise, friendly, and focused on one value proposition. Always include a clear call-to-action..."
-                rows={5}
-                value={systemPrompt}
-                onChange={(e) => setSystemPrompt(e.target.value)}
-              />
-            </CardContent>
-          </Card>
+            {/* System Prompt */}
+            <Card className="rounded-2xl border-stone-200 bg-white shadow-none">
+              <CardHeader>
+                <CardTitle className="text-[13px] font-semibold uppercase tracking-wide text-stone-500">
+                  AI Instructions
+                </CardTitle>
+                <p className="text-sm text-stone-500">
+                  Tell the AI how to write emails for this outreach type. Include your goals,
+                  tone preferences, and any constraints.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <Textarea
+                  placeholder="e.g. You are writing cold outreach emails to SaaS founders. Keep emails concise, friendly, and focused on one value proposition. Always include a clear call-to-action..."
+                  rows={5}
+                  value={systemPrompt}
+                  onChange={(e) => setSystemPrompt(e.target.value)}
+                  className="rounded-xl border-stone-200 focus-visible:ring-[#C1613F]"
+                />
+              </CardContent>
+            </Card>
 
-          {/* Example Emails */}
-          <Card className="border-gray-200 shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-1.5">
-                Example Emails
-                <InfoTooltip content="Four examples give the AI enough variety to learn your tone, structure, and length without copying any single email verbatim." />
-              </CardTitle>
-              <p className="text-sm text-gray-500">
-                The AI studies these four real emails to match your tone, structure, and
-                length — it will not copy them, only learn the style.
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {exampleEmails.map((email, i) => (
-                <div key={i} className="space-y-1.5">
-                  <Label htmlFor={`example-${i}`}>Example Email {i + 1}</Label>
-                  <Textarea
-                    id={`example-${i}`}
-                    placeholder={`Paste a real email that represents the style you want — Example ${i + 1}`}
-                    rows={5}
-                    value={email}
-                    onChange={(e) => updateExampleEmail(i, e.target.value)}
-                  />
-                </div>
-              ))}
-              <div className="flex items-center gap-2 rounded-md bg-blue-50 px-4 py-3 text-sm text-blue-700">
-                <AlertTriangle className="h-4 w-4 shrink-0" />
-                All four example emails are required before this outreach type can be saved as active.
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Sequence Steps */}
-          <Card className="border-gray-200 shadow-sm">
-            <CardHeader>
-              <CardTitle className="text-base flex items-center gap-1.5">
-                Sequence Steps
-                <InfoTooltip content="Each step sends after the specified delay in days from the previous step. Drag steps to reorder — step numbers update automatically." />
-              </CardTitle>
-              <p className="text-sm text-gray-500">
-                Define the follow-up cadence. Each step sends after the specified delay in days.
-                The first step (Day 0) is the initial email.
-              </p>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <DndContext
-                sensors={sensors}
-                collisionDetection={closestCenter}
-                onDragEnd={handleDragEnd}
-              >
-                <SortableContext
-                  items={sequenceSteps.map((_, i) => `step-${i}`)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  {sequenceSteps.map((step, i) => (
-                    <SortableStep
-                      key={`step-${i}`}
-                      id={`step-${i}`}
-                      stepNumber={i + 1}
-                      delayDays={step.delayDays}
-                      onDelayChange={(d) => updateStepDelay(i, d)}
-                      onRemove={() => removeStep(i)}
-                      canRemove={sequenceSteps.length > 1}
+            {/* Example Emails */}
+            <Card className="rounded-2xl border-stone-200 bg-white shadow-none">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-1.5 text-[13px] font-semibold uppercase tracking-wide text-stone-500">
+                  Example Emails
+                  <InfoTooltip content="Four examples give the AI enough variety to learn your tone, structure, and length without copying any single email verbatim." />
+                </CardTitle>
+                <p className="text-sm text-stone-500">
+                  The AI studies these four real emails to match your tone, structure, and
+                  length — it will not copy them, only learn the style.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {exampleEmails.map((email, i) => (
+                  <div key={i} className="space-y-1.5">
+                    <Label htmlFor={`example-${i}`} className="text-stone-700">Example Email {i + 1}</Label>
+                    <Textarea
+                      id={`example-${i}`}
+                      placeholder={`Paste a real email that represents the style you want — Example ${i + 1}`}
+                      rows={5}
+                      value={email}
+                      onChange={(e) => updateExampleEmail(i, e.target.value)}
+                      className="rounded-xl border-stone-200 focus-visible:ring-[#C1613F]"
                     />
-                  ))}
-                </SortableContext>
-              </DndContext>
+                  </div>
+                ))}
+                <div className="flex items-center gap-2 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  <AlertTriangle className="h-4 w-4 shrink-0" strokeWidth={1.75} />
+                  All four example emails are required before this outreach type can be saved as active.
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Sequence Steps */}
+            <Card className="rounded-2xl border-stone-200 bg-white shadow-none">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-1.5 text-[13px] font-semibold uppercase tracking-wide text-stone-500">
+                  Sequence Steps
+                  <InfoTooltip content="Each step sends after the specified delay in days from the previous step. Drag steps to reorder — step numbers update automatically." />
+                </CardTitle>
+                <p className="text-sm text-stone-500">
+                  Define the follow-up cadence. Each step sends after the specified delay in days.
+                  The first step (Day 0) is the initial email.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <DndContext
+                  sensors={sensors}
+                  collisionDetection={closestCenter}
+                  onDragEnd={handleDragEnd}
+                >
+                  <SortableContext
+                    items={sequenceSteps.map((_, i) => `step-${i}`)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    {sequenceSteps.map((step, i) => (
+                      <SortableStep
+                        key={`step-${i}`}
+                        id={`step-${i}`}
+                        stepNumber={i + 1}
+                        delayDays={step.delayDays}
+                        onDelayChange={(d) => updateStepDelay(i, d)}
+                        onRemove={() => removeStep(i)}
+                        canRemove={sequenceSteps.length > 1}
+                      />
+                    ))}
+                  </SortableContext>
+                </DndContext>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={addStep}
+                  className="rounded-full border-stone-200 text-stone-700 hover:bg-stone-50"
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add step
+                </Button>
+              </CardContent>
+            </Card>
+
+            {/* Actions */}
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
               <Button
                 type="button"
                 variant="outline"
-                onClick={addStep}
-                className="border-gray-200"
+                onClick={() => setShowPreview(true)}
+                className="rounded-full border-stone-200 text-stone-700 hover:bg-stone-50"
               >
-                <Plus className="mr-2 h-4 w-4" />
-                Add step
+                <Eye className="mr-2 h-4 w-4" />
+                Preview example emails
               </Button>
-            </CardContent>
-          </Card>
-
-          {/* Actions */}
-          <div className="flex items-center justify-between">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setShowPreview(true)}
-              className="border-gray-200"
-            >
-              <Eye className="mr-2 h-4 w-4" />
-              Preview example emails
-            </Button>
-            <div className="flex gap-3">
-              <Link href="/outreach-types">
-                <Button type="button" variant="outline" className="border-gray-200">
-                  Cancel
+              <div className="flex gap-3">
+                <Link href="/outreach-types" className="flex-1 sm:flex-none">
+                  <Button type="button" variant="outline" className="w-full rounded-full border-stone-200 text-stone-700 hover:bg-stone-50 sm:w-auto">
+                    Cancel
+                  </Button>
+                </Link>
+                <Button
+                  type="submit"
+                  disabled={loading}
+                  className="flex-1 rounded-full bg-[#C1613F] text-white hover:bg-[#A94F31] sm:flex-none"
+                >
+                  {loading ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : null}
+                  {isEdit ? 'Save changes' : 'Create outreach type'}
                 </Button>
-              </Link>
-              <Button type="submit" disabled={loading} className="bg-blue-600 hover:bg-blue-700">
-                {loading ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : null}
-                {isEdit ? 'Save changes' : 'Create outreach type'}
-              </Button>
+              </div>
             </div>
-          </div>
-        </form>
+          </form>
+        </div>
       </div>
 
       {/* Preview Dialog */}
       <Dialog open={showPreview} onOpenChange={setShowPreview}>
-        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-h-[80vh] max-w-4xl overflow-y-auto rounded-2xl">
           <DialogHeader>
-            <DialogTitle>Example Email Preview</DialogTitle>
-            <DialogDescription>
+            <DialogTitle className="font-serif text-stone-900">Example Email Preview</DialogTitle>
+            <DialogDescription className="text-stone-500">
               This is how your four example emails look. Real AI-generated previews come in a later stage.
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             {exampleEmails.map((email, i) => (
-              <div key={i} className="rounded-lg border border-gray-200 p-4">
-                <p className="mb-2 text-sm font-medium text-gray-900">Example Email {i + 1}</p>
-                <div className="whitespace-pre-wrap text-sm text-gray-600 min-h-[100px]">
+              <div key={i} className="rounded-xl border border-stone-200 p-4">
+                <p className="mb-2 text-sm font-medium text-stone-900">Example Email {i + 1}</p>
+                <div className="min-h-[100px] whitespace-pre-wrap text-sm text-stone-600">
                   {email.trim() || (
-                    <span className="text-gray-400 italic">Not yet filled in</span>
+                    <span className="italic text-stone-400">Not yet filled in</span>
                   )}
                 </div>
               </div>
@@ -375,7 +388,7 @@ export function OutreachTypeForm({ mode, typeId, initialData }: OutreachTypeForm
               business profile, showing a side-by-side comparison of the AI output
               alongside the real examples. For now, this is a static UI preview only. */}
           <DialogFooter>
-            <Button onClick={() => setShowPreview(false)} className="bg-blue-600 hover:bg-blue-700">
+            <Button onClick={() => setShowPreview(false)} className="rounded-full bg-[#C1613F] text-white hover:bg-[#A94F31]">
               Close
             </Button>
           </DialogFooter>
@@ -384,13 +397,13 @@ export function OutreachTypeForm({ mode, typeId, initialData }: OutreachTypeForm
 
       {/* Edit Warning Dialog */}
       <Dialog open={showEditWarning} onOpenChange={setShowEditWarning}>
-        <DialogContent>
+        <DialogContent className="rounded-2xl">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-amber-500" />
+            <DialogTitle className="flex items-center gap-2 font-serif text-stone-900">
+              <AlertTriangle className="h-5 w-5 text-amber-500" strokeWidth={1.75} />
               Confirm changes
             </DialogTitle>
-            <DialogDescription>
+            <DialogDescription className="text-stone-500">
               This will only affect emails sent from now on. Already-sent emails are not changed.
             </DialogDescription>
           </DialogHeader>
@@ -398,7 +411,7 @@ export function OutreachTypeForm({ mode, typeId, initialData }: OutreachTypeForm
             <Button
               variant="outline"
               onClick={() => setShowEditWarning(false)}
-              className="border-gray-200"
+              className="rounded-full border-stone-200 text-stone-700 hover:bg-stone-50"
             >
               Cancel
             </Button>
@@ -407,7 +420,7 @@ export function OutreachTypeForm({ mode, typeId, initialData }: OutreachTypeForm
                 setShowEditWarning(false);
                 setPendingSubmit(true);
               }}
-              className="bg-blue-600 hover:bg-blue-700"
+              className="rounded-full bg-[#C1613F] text-white hover:bg-[#A94F31]"
             >
               Save changes
             </Button>
@@ -441,31 +454,31 @@ function SortableStep({
   };
 
   return (
-    <div ref={setNodeRef} style={style} className="flex items-center gap-3 rounded-md border border-gray-100 px-3 py-2">
+    <div ref={setNodeRef} style={style} className="flex items-center gap-3 rounded-xl border border-stone-200 px-3 py-2">
       <button
         {...attributes}
         {...listeners}
-        className="cursor-grab text-gray-300 hover:text-gray-500 touch-none"
+        className="cursor-grab touch-none text-stone-300 hover:text-stone-500"
         type="button"
       >
         <GripVertical className="h-4 w-4" />
       </button>
-      <div className="flex h-8 w-8 items-center justify-center rounded-md bg-blue-50 text-sm font-medium text-blue-700">
+      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#F3E7DE] text-sm font-medium text-[#A94F31]">
         {stepNumber}
       </div>
       <div className="flex-1">
-        <span className="text-sm text-gray-700">
+        <span className="text-sm text-stone-700">
           {stepNumber === 1 ? 'First email' : `Follow-up ${stepNumber - 1}`}
         </span>
       </div>
       <div className="flex items-center gap-2">
-        <Label className="text-xs text-gray-500">Delay (days)</Label>
+        <Label className="text-xs text-stone-500">Delay (days)</Label>
         <Input
           type="number"
           min={0}
           value={delayDays}
           onChange={(e) => onDelayChange(parseInt(e.target.value) || 0)}
-          className="w-24"
+          className="w-24 rounded-lg border-stone-200 focus-visible:ring-[#C1613F]"
         />
       </div>
       <Button
@@ -474,7 +487,7 @@ function SortableStep({
         size="icon"
         onClick={onRemove}
         disabled={!canRemove}
-        className="h-8 w-8 text-gray-400 hover:text-red-600 disabled:opacity-30"
+        className="h-8 w-8 rounded-full text-stone-400 hover:text-red-600 disabled:opacity-30"
       >
         <Trash2 className="h-4 w-4" />
       </Button>

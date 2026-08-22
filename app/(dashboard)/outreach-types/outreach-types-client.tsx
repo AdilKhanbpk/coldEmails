@@ -29,7 +29,7 @@ function StatusPill({ active }: { active: boolean }) {
   return active ? (
     <Badge className="border-transparent bg-emerald-50 text-emerald-700">Active</Badge>
   ) : (
-    <Badge variant="outline" className="border-gray-200 text-gray-500">
+    <Badge variant="outline" className="border-stone-200 text-stone-500">
       Inactive
     </Badge>
   );
@@ -39,7 +39,7 @@ function PageHeader({ onCreate }: { onCreate: () => void }) {
   return (
     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div>
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-stone-500">
           The AI prompt, example emails, and sequence steps behind each campaign.
         </p>
       </div>
@@ -132,17 +132,17 @@ export default function OutreachTypesClient() {
     return (
       <div className="space-y-5">
         <PageHeader onCreate={goToCreate} />
-        <Card className="border-dashed border-gray-200 bg-white shadow-sm">
+        <Card className="rounded-2xl border-dashed border-stone-200 bg-white shadow-none">
           <CardContent className="flex flex-col items-center justify-center px-6 py-16 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-blue-50">
-              <ListChecks className="h-7 w-7 text-blue-600" />
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#F3E7DE]">
+              <ListChecks className="h-6 w-6 text-[#C1613F]" strokeWidth={1.75} />
             </div>
-            <h3 className="mt-5 text-lg font-semibold text-gray-900">No outreach types yet</h3>
-            <p className="mt-2 max-w-md text-sm text-gray-500">
+            <h3 className="mt-5 font-serif text-lg font-medium text-stone-900">No outreach types yet</h3>
+            <p className="mt-2 max-w-md text-sm leading-relaxed text-stone-500">
               Outreach types define the AI prompt, example emails, and sequence steps for your
               campaigns. Create your first one to get started.
             </p>
-            <Button className="mt-6 bg-blue-600 hover:bg-blue-700" onClick={goToCreate}>
+            <Button className="mt-6 rounded-full bg-[#C1613F] text-white hover:bg-[#A94F31]" onClick={goToCreate}>
               <Plus className="mr-2 h-4 w-4" />
               Create your first outreach type
             </Button>
@@ -157,23 +157,23 @@ export default function OutreachTypesClient() {
       <PageHeader onCreate={goToCreate} />
 
       {/* Desktop table */}
-      <div className="hidden overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm md:block">
+      <div className="hidden overflow-hidden rounded-2xl border border-stone-200 bg-white md:block">
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
-              <TableRow className="bg-gray-50 hover:bg-gray-50">
-                <TableHead className="w-[280px]">Name</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Leads assigned</TableHead>
-                <TableHead>Sequence steps</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
+              <TableRow className="border-stone-200 bg-stone-50 hover:bg-stone-50">
+                <TableHead className="w-[280px] text-stone-500">Name</TableHead>
+                <TableHead className="text-stone-500">Status</TableHead>
+                <TableHead className="text-stone-500">Leads assigned</TableHead>
+                <TableHead className="text-stone-500">Sequence steps</TableHead>
+                <TableHead className="text-stone-500">Created</TableHead>
+                <TableHead className="text-right text-stone-500">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {types.map((t) => (
-                <TableRow key={t.id} className="hover:bg-gray-50">
-                  <TableCell className="font-medium text-gray-900">{t.name}</TableCell>
+                <TableRow key={t.id} className="border-stone-200 hover:bg-stone-50">
+                  <TableCell className="font-medium text-stone-900">{t.name}</TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2.5">
                       <Switch
@@ -181,19 +181,20 @@ export default function OutreachTypesClient() {
                         disabled={togglingId === t.id}
                         onCheckedChange={() => handleToggle(t.id, t.active ?? false)}
                         aria-label={`${t.active ? 'Deactivate' : 'Activate'} ${t.name}`}
+                        className="data-[state=checked]:bg-[#C1613F]"
                       />
                       {togglingId === t.id ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin text-gray-400" />
+                        <Loader2 className="h-3.5 w-3.5 animate-spin text-stone-400" />
                       ) : (
                         <StatusPill active={t.active ?? false} />
                       )}
                     </div>
                   </TableCell>
-                  <TableCell className="text-gray-600">{t._count?.leads ?? 0}</TableCell>
-                  <TableCell className="text-gray-600">
+                  <TableCell className="text-stone-600">{t._count?.leads ?? 0}</TableCell>
+                  <TableCell className="text-stone-600">
                     {t.sequenceSteps?.length ?? 0} step{(t.sequenceSteps?.length ?? 0) !== 1 ? 's' : ''}
                   </TableCell>
-                  <TableCell className="whitespace-nowrap text-gray-500">
+                  <TableCell className="whitespace-nowrap text-stone-500">
                     {t.createdAt && format(new Date(t.createdAt), 'MMM d, yyyy')}
                   </TableCell>
                   <TableCell className="text-right">
@@ -202,19 +203,19 @@ export default function OutreachTypesClient() {
                         variant="ghost"
                         size="icon"
                         onClick={() => goToEdit(t.id)}
-                        className="h-8 w-8 text-gray-500 hover:text-gray-900"
+                        className="h-8 w-8 rounded-full text-stone-500 hover:bg-stone-100 hover:text-stone-900"
                         aria-label={`Edit ${t.name}`}
                       >
-                        <Pencil className="h-4 w-4" />
+                        <Pencil className="h-4 w-4" strokeWidth={1.75} />
                       </Button>
                       <Button
                         variant="ghost"
                         size="icon"
                         onClick={() => setDeleteTarget(t)}
-                        className="h-8 w-8 text-gray-500 hover:bg-red-50 hover:text-red-600"
+                        className="h-8 w-8 rounded-full text-stone-500 hover:bg-red-50 hover:text-red-600"
                         aria-label={`Delete ${t.name}`}
                       >
-                        <Trash2 className="h-4 w-4" />
+                        <Trash2 className="h-4 w-4" strokeWidth={1.75} />
                       </Button>
                     </div>
                   </TableCell>
@@ -228,25 +229,26 @@ export default function OutreachTypesClient() {
       {/* Mobile card list */}
       <div className="space-y-2.5 md:hidden">
         {types.map((t) => (
-          <Card key={t.id} className="border-gray-200 shadow-sm">
+          <Card key={t.id} className="rounded-2xl border-stone-200 bg-white shadow-none">
             <CardContent className="p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-3">
                   <div
                     className={cn(
-                      'flex h-10 w-10 shrink-0 items-center justify-center rounded-lg',
-                      t.active ? 'bg-blue-50' : 'bg-gray-100',
+                      'flex h-10 w-10 shrink-0 items-center justify-center rounded-full',
+                      t.active ? 'bg-[#F3E7DE]' : 'bg-stone-100',
                     )}
                   >
                     <Layers
-                      className={cn('h-5 w-5', t.active ? 'text-blue-600' : 'text-gray-400')}
+                      className={cn('h-5 w-5', t.active ? 'text-[#C1613F]' : 'text-stone-400')}
+                      strokeWidth={1.75}
                     />
                   </div>
                   <div className="min-w-0">
-                    <p className="truncate font-medium text-gray-900">{t.name}</p>
+                    <p className="truncate font-medium text-stone-900">{t.name}</p>
                     <div className="mt-1 flex items-center gap-1.5">
                       {togglingId === t.id ? (
-                        <span className="flex items-center gap-1 text-xs text-gray-400">
+                        <span className="flex items-center gap-1 text-xs text-stone-400">
                           <Loader2 className="h-3 w-3 animate-spin" />
                           Updating…
                         </span>
@@ -261,39 +263,39 @@ export default function OutreachTypesClient() {
                   disabled={togglingId === t.id}
                   onCheckedChange={() => handleToggle(t.id, t.active ?? false)}
                   aria-label={`${t.active ? 'Deactivate' : 'Activate'} ${t.name}`}
-                  className="shrink-0"
+                  className="shrink-0 data-[state=checked]:bg-[#C1613F]"
                 />
               </div>
 
-              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-gray-500">
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-stone-500">
                 <span>
-                  <span className="font-medium text-gray-700">{t._count?.leads ?? 0}</span> leads
+                  <span className="font-medium text-stone-700">{t._count?.leads ?? 0}</span> leads
                   assigned
                 </span>
                 <span>
-                  <span className="font-medium text-gray-700">{t.sequenceSteps?.length ?? 0}</span>{' '}
+                  <span className="font-medium text-stone-700">{t.sequenceSteps?.length ?? 0}</span>{' '}
                   step{(t.sequenceSteps?.length ?? 0) !== 1 ? 's' : ''}
                 </span>
                 {t.createdAt && <span>Created {format(new Date(t.createdAt), 'MMM d, yyyy')}</span>}
               </div>
 
-              <div className="mt-3 flex gap-2 border-t border-gray-100 pt-3">
+              <div className="mt-3 flex gap-2 border-t border-stone-100 pt-3">
                 <Button
                   variant="outline"
                   size="sm"
-                  className="flex-1 border-gray-200"
+                  className="flex-1 rounded-full border-stone-200 text-stone-700 hover:bg-stone-50"
                   onClick={() => goToEdit(t.id)}
                 >
-                  <Pencil className="mr-2 h-3.5 w-3.5" />
+                  <Pencil className="mr-2 h-3.5 w-3.5" strokeWidth={1.75} />
                   Edit
                 </Button>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="flex-1 border-gray-200 text-red-600 hover:bg-red-50 hover:text-red-600"
+                  className="flex-1 rounded-full border-stone-200 text-red-600 hover:bg-red-50 hover:text-red-600"
                   onClick={() => setDeleteTarget(t)}
                 >
-                  <Trash2 className="mr-2 h-3.5 w-3.5" />
+                  <Trash2 className="mr-2 h-3.5 w-3.5" strokeWidth={1.75} />
                   Delete
                 </Button>
               </div>
